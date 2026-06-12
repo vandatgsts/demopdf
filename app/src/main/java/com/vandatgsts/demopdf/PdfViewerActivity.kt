@@ -25,15 +25,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.graphics.toColorInt
-import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.pdmodel.PDPage
-import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
-import com.tom_roush.pdfbox.pdmodel.font.PDType0Font
-import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
-import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
-import com.tom_roush.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState
-import com.tom_roush.pdfbox.text.PDFTextStripper
-import com.tom_roush.pdfbox.text.TextPosition
+
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -94,7 +86,7 @@ class PdfViewerActivity : AppCompatActivity() {
     private lateinit var btnToggleLineEffect: Button
     private var selectionStartX = 0f
     private var selectionStartY = 0f
-    private var selectionRect: android.graphics.RectF? = null
+    private var selectionRect: RectF? = null
 
     private var isEditTextMode = false
     private lateinit var btnToggleEdit: Button
@@ -404,7 +396,7 @@ class PdfViewerActivity : AppCompatActivity() {
                         MotionEvent.ACTION_DOWN -> {
                             selectionStartX = pdfX
                             selectionStartY = pdfY
-                            selectionRect = android.graphics.RectF(pdfX, pdfY, pdfX, pdfY)
+                            selectionRect = RectF(pdfX, pdfY, pdfX, pdfY)
                             // Khóa cuộn màn hình
                             ivPdfPage.parent?.requestDisallowInterceptTouchEvent(true)
                             return@setOnTouchListener true
@@ -412,7 +404,7 @@ class PdfViewerActivity : AppCompatActivity() {
                         MotionEvent.ACTION_MOVE -> {
                             val currentX = pdfX
                             val currentY = pdfY
-                            selectionRect = android.graphics.RectF(
+                            selectionRect = RectF(
                                 minOf(selectionStartX, currentX),
                                 minOf(selectionStartY, currentY),
                                 maxOf(selectionStartX, currentX),
@@ -551,8 +543,7 @@ class PdfViewerActivity : AppCompatActivity() {
     private fun findEditAt(pdfX: Float, pdfY: Float): PdfEdit? {
         // Duyệt từ cuối lên đầu để ưu tiên phần tử nằm đè lên trên (vừa tạo sau)
         for (i in pendingEdits.indices.reversed()) {
-            val edit = pendingEdits[i]
-            when (edit) {
+            when (val edit = pendingEdits[i]) {
                 is PdfEdit.TextEdit -> {
                     val width = edit.text.length * 8f // ước lượng chiều rộng text
                     val height = 16f
@@ -801,7 +792,7 @@ class PdfViewerActivity : AppCompatActivity() {
                         val sigWidth = edit.width * scaleFactor
                         val sigHeight = edit.height * scaleFactor
                         
-                        val destRect = android.graphics.RectF(
+                        val destRect = RectF(
                             bmpX,
                             bmpY - sigHeight,
                             bmpX + sigWidth,
@@ -1016,140 +1007,22 @@ class PdfViewerActivity : AppCompatActivity() {
             fileDescriptor?.close()
             fileDescriptor = null
 
-            // 1. Tạo tệp tạm đọc nội dung cũ
-            val tempFile = File(cacheDir, "temp_process.pdf")
-            originalFile.copyTo(tempFile, overwrite = true)
+            val success = PdfEditorHelper.saveEdits(
+                this,
+                pdfFilePath!!,
+                pdfFileUri,
+                currentPageIndex,
+                pendingEdits
+            )
 
-            // 2. Tạo tệp tạm đầu ra để ghi kết quả chỉnh sửa, tránh lock trực tiếp trên originalFile
-            val tempOutputFile = File(cacheDir, "temp_output.pdf")
-            
-            val document = PDDocument.load(tempFile)
-            val page = document.getPage(currentPageIndex)
-
-            val fontPath = "/system/fonts/Roboto-Regular.ttf"
-            val font = if (File(fontPath).exists()) {
-                PDType0Font.load(document, File(fontPath))
+            if (success) {
+                pendingEdits.clear()
+                setupPdfRenderer()
+                Toast.makeText(this, "Đã lưu chỉnh sửa vào PDF thành công!", Toast.LENGTH_SHORT).show()
             } else {
-                PDType1Font.HELVETICA
+                setupPdfRenderer()
+                Toast.makeText(this, "Lỗi khi lưu PDF!", Toast.LENGTH_LONG).show()
             }
-
-            // Mở content stream ở chế độ APPEND, cấu hình resetContext=true và compress=true
-            val contentStream = PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true)
-
-            for (edit in pendingEdits) {
-                when (edit) {
-                    is PdfEdit.TextEdit -> {
-                        contentStream.beginText()
-                        contentStream.setFont(font, 14f)
-                        contentStream.setNonStrokingColor(1f, 0f, 0f) // Chèn chữ mới màu đỏ
-                        contentStream.newLineAtOffset(edit.x, edit.y)
-                        contentStream.showText(edit.text)
-                        contentStream.endText()
-                    }
-                    is PdfEdit.SignatureEdit -> {
-                        val pdImage = LosslessFactory.createFromImage(document, edit.bitmap)
-                        val sigWidth = edit.width
-                        val sigHeight = edit.height
-                        contentStream.drawImage(pdImage, edit.x, edit.y, sigWidth, sigHeight)
-                    }
-                    is PdfEdit.WhiteoutTextEdit -> {
-                        // 1. Vẽ hình chữ nhật trắng che chữ cũ
-                        contentStream.setNonStrokingColor(1f, 1f, 1f)
-                        contentStream.addRect(edit.x, edit.y - 4f, edit.width, edit.fontSize * 1.2f)
-                        contentStream.fill()
-
-                        // 2. Viết chữ thay thế mới màu với đúng cỡ chữ, kiểu font và màu sắc gốc
-                        val selectedFont = if (edit.isBold) {
-                            val boldFontPath = "/system/fonts/Roboto-Bold.ttf"
-                            if (File(boldFontPath).exists()) {
-                                PDType0Font.load(document, File(boldFontPath))
-                            } else {
-                                font
-                            }
-                        } else {
-                            font
-                        }
-
-                        contentStream.beginText()
-                        contentStream.setFont(selectedFont, edit.fontSize)
-                        
-                        val r = android.graphics.Color.red(edit.textColor) / 255f
-                        val g = android.graphics.Color.green(edit.textColor) / 255f
-                        val b = android.graphics.Color.blue(edit.textColor) / 255f
-                        contentStream.setNonStrokingColor(r, g, b)
-                        
-                        contentStream.newLineAtOffset(edit.x, edit.y)
-                        contentStream.showText(edit.text)
-                        contentStream.endText()
-                    }
-                    is PdfEdit.HighlightEdit -> {
-                        // 1. Đặt thuộc tính bán trong suốt (opacity 0.4) cho bút vẽ
-                        val gState = PDExtendedGraphicsState()
-                        gState.nonStrokingAlphaConstant = 0.4f
-                        contentStream.setGraphicsStateParameters(gState)
-                        
-                        // 2. Vẽ hình chữ nhật màu vàng làm nổi bật chữ
-                        contentStream.setNonStrokingColor(1f, 1f, 0f)
-                        contentStream.addRect(edit.x, edit.y - 4f, edit.width, edit.height)
-                        contentStream.fill()
-                        
-                        // 3. Reset lại opacity về 1.0f cho các phần vẽ sau
-                        val resetState = PDExtendedGraphicsState()
-                        resetState.nonStrokingAlphaConstant = 1.0f
-                        contentStream.setGraphicsStateParameters(resetState)
-                    }
-                    is PdfEdit.LineEffectEdit -> {
-                        contentStream.setStrokingColor(1f, 0f, 0f)
-                        contentStream.setLineWidth(1.5f)
-                        if (edit.effectType == 1) {
-                            // Underline: dưới baseline 2pt
-                            val lineY = edit.y - 2f
-                            contentStream.moveTo(edit.x, lineY)
-                            contentStream.lineTo(edit.x + edit.width, lineY)
-                        } else {
-                            // Strikethrough: ở giữa chữ
-                            val lineY = edit.y + edit.height / 2
-                            contentStream.moveTo(edit.x, lineY)
-                            contentStream.lineTo(edit.x + edit.width, lineY)
-                        }
-                        contentStream.stroke()
-                    }
-                }
-            }
-
-            contentStream.close()
-            document.save(tempOutputFile)
-            document.close()
-
-            // 3. Sao chép kết quả từ tệp tạm đè lên tệp PDF gốc
-            if (tempOutputFile.exists()) {
-                tempOutputFile.copyTo(originalFile, overwrite = true)
-                tempOutputFile.delete()
-            }
-
-            // Ghi ngược lại Uri gốc bên ngoài thiết bị (nếu có) để đồng bộ thay đổi thực tế
-            pdfFileUri?.let { uriString ->
-                try {
-                    val uri = Uri.parse(uriString)
-                    contentResolver.openOutputStream(uri, "w")?.use { outputStream ->
-                        originalFile.inputStream().use { inputStream ->
-                            inputStream.copyTo(outputStream)
-                        }
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-
-            // Xóa tệp tạm đọc
-            tempFile.delete()
-            pendingEdits.clear()
-
-            // Khởi tạo lại PdfRenderer hiển thị tệp mới
-            setupPdfRenderer()
-
-            Toast.makeText(this, "Đã lưu chỉnh sửa vào PDF thành công!", Toast.LENGTH_SHORT).show()
-
         } catch (e: Throwable) {
             e.printStackTrace()
             Toast.makeText(this, "Lỗi khi lưu PDF: ${e.message}", Toast.LENGTH_LONG).show()
@@ -1237,7 +1110,7 @@ class PdfViewerActivity : AppCompatActivity() {
         etInline.requestFocus()
 
         // Tự động mở bàn phím ảo
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         imm.showSoftInput(etInline, InputMethodManager.SHOW_IMPLICIT)
     }
 
@@ -1254,7 +1127,7 @@ class PdfViewerActivity : AppCompatActivity() {
         val container = findViewById<FrameLayout>(R.id.pdfViewContainer)
 
         // Ẩn bàn phím ảo
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(et.windowToken, 0)
 
         // Ghi nhận thay đổi nếu nội dung thay đổi và không rỗng
@@ -1278,117 +1151,11 @@ class PdfViewerActivity : AppCompatActivity() {
         return null
     }
 
-    // Hiển thị hộp thoại chỉnh sửa văn bản được nhận diện
-    private fun showEditDetectedTextDialog(block: TextBlock) {
-        val dialogView = layoutInflater.inflate(R.layout.dialog_whiteout_edit, null)
-        val etNewText = dialogView.findViewById<EditText>(R.id.etNewText)
-        val etWhiteoutWidth = dialogView.findViewById<EditText>(R.id.etWhiteoutWidth)
-        val btnWhiteoutCancel = dialogView.findViewById<Button>(R.id.btnWhiteoutCancel)
-        val btnWhiteoutConfirm = dialogView.findViewById<Button>(R.id.btnWhiteoutConfirm)
-
-        // Điền sẵn nội dung chữ cũ và chiều rộng cũ của khối text
-        etNewText.setText(block.text)
-        etWhiteoutWidth.setText(block.width.toString())
-
-        val alertDialog = AlertDialog.Builder(this)
-            .setTitle("Sửa văn bản trong tài liệu")
-            .setView(dialogView)
-            .create()
-
-        btnWhiteoutCancel.setOnClickListener {
-            alertDialog.dismiss()
-        }
-
-        btnWhiteoutConfirm.setOnClickListener {
-            val newText = etNewText.text.toString().trim()
-            val widthStr = etWhiteoutWidth.text.toString().trim()
-            val width = widthStr.toFloatOrNull() ?: block.width
-
-            if (newText.isNotEmpty()) {
-                // Thêm chỉnh sửa WhiteoutTextEdit đè lên đúng tọa độ của text block cũ
-                pendingEdits.add(PdfEdit.WhiteoutTextEdit(newText, block.x, block.y, width, block.fontSize, block.isBold, block.textColor))
-                renderPageWithEdits()
-                alertDialog.dismiss()
-            } else {
-                Toast.makeText(this, "Vui lòng nhập chữ thay thế!", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        alertDialog.show()
-    }
 
     // Quét toàn bộ trang PDF để nhận diện văn bản và tọa độ của chúng
     private fun detectTextBlocks(pageIndex: Int) {
         detectedTextBlocks.clear()
         val filePath = pdfFilePath ?: return
-        try {
-            val file = File(filePath)
-            val document = PDDocument.load(file)
-            val page = document.getPage(pageIndex)
-            val pageHeight = page.cropBox.height
-
-            val stripper = AndroidTextStripper(pageHeight)
-            stripper.startPage = pageIndex + 1
-            stripper.endPage = pageIndex + 1
-
-            val writer = java.io.StringWriter()
-            stripper.writeText(document, writer)
-
-            detectedTextBlocks.addAll(stripper.textBlocks)
-            document.close()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-}
-
-// Lớp lưu trữ thông tin khối văn bản nhận diện được
-class TextBlock(
-    val text: String,
-    val x: Float,
-    val y: Float,
-    val width: Float,
-    val height: Float,
-    val fontSize: Float,
-    val isBold: Boolean,
-    val textColor: Int
-)
-
-// Trình trích xuất văn bản của PDFBox-Android gom cụm các ký tự trên cùng dòng
-class AndroidTextStripper(private val pageHeight: Float) : PDFTextStripper() {
-    val textBlocks = mutableListOf<TextBlock>()
-
-    init {
-        sortByPosition = true
-    }
-
-    @Throws(java.io.IOException::class)
-    override fun writeString(text: String, textPositions: List<TextPosition>) {
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) return
-        val first = textPositions.first()
-        val last = textPositions.last()
-
-        val x = first.xDirAdj
-        val y = pageHeight - first.yDirAdj
-        val width = (last.xDirAdj + last.widthDirAdj) - first.xDirAdj
-        val height = if (first.heightDir > 1f) first.heightDir else 14f
-        
-        val fontSize = if (first.fontSizeInPt > 0f) first.fontSizeInPt else 14f
-        val fontName = first.font?.name?.lowercase() ?: ""
-        val isBold = fontName.contains("bold") || fontName.contains("black") || fontName.contains("w700")
-
-        val textColor = try {
-            val color = graphicsState.nonStrokingColor
-            val rgbValues = color.colorSpace.toRGB(color.components)
-            val r = (rgbValues[0] * 255).toInt().coerceIn(0, 255)
-            val g = (rgbValues[1] * 255).toInt().coerceIn(0, 255)
-            val b = (rgbValues[2] * 255).toInt().coerceIn(0, 255)
-            android.graphics.Color.rgb(r, g, b)
-        } catch (e: Exception) {
-            android.graphics.Color.BLACK
-        }
-
-        textBlocks.add(TextBlock(trimmed, x, y, width, height, fontSize, isBold, textColor))
+        detectedTextBlocks.addAll(PdfEditorHelper.detectTextBlocks(filePath, pageIndex))
     }
 }
