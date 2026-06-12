@@ -1,0 +1,196 @@
+{
+  "project_name": "demopdf",
+  "platform": "android_native",
+  "language": "kotlin",
+  "architecture": "Single Activity, MVC",
+  "dependency_injection": "none",
+  "modules": [":app"],
+  "entry_points": [
+    "com.vandatgsts.demopdf.MainActivity",
+    "com.vandatgsts.demopdf.PdfViewerActivity"
+  ],
+  "method_channels": [],
+  "ads": [],
+  "billing": [],
+  "flows": [
+    {
+      "name": "PDF E-Sign Flow",
+      "feature": "pdf_esign",
+      "steps": [
+        {
+          "file": "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt",
+          "symbol": "MainActivity.generateSamplePdf",
+          "action": "Tạo file PDF mẫu chứa thông tin hợp đồng"
+        },
+        {
+          "file": "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt",
+          "symbol": "MainActivity.signAndSavePdf",
+          "action": "Ký tay và ghi đè nội dung mới lên PDF thông qua PDFBox PDPageContentStream"
+        },
+        {
+          "file": "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt",
+          "symbol": "MainActivity.openPdfFile",
+          "action": "Mở PDF đã ký bằng ứng dụng PDF viewer của hệ thống thông qua FileProvider"
+        }
+      ],
+      "related_symbols": [
+        "MainActivity.generateSamplePdf",
+        "MainActivity.signAndSavePdf",
+        "MainActivity.openPdfFile"
+      ],
+      "related_features": [
+        "pdf_esign"
+      ]
+    },
+    {
+      "name": "PDF Region Selection Line Effect Flow",
+      "feature": "pdf_line_effect",
+      "steps": [
+        {
+          "file": "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+          "symbol": "PdfViewerActivity.setupTouchInteraction",
+          "action": "Người dùng vuốt ngón tay tạo vùng quét chọn nét đứt màu đỏ"
+        },
+        {
+          "file": "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+          "symbol": "PdfViewerActivity.renderPageWithEdits",
+          "action": "Vẽ preview đường kẻ (gạch dưới/gạch ngang) tạm thời lên trang PDF"
+        },
+        {
+          "file": "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+          "symbol": "PdfViewerActivity.saveEditsToFile",
+          "action": "Ghi vĩnh viễn các nét kẻ chữ vào PDF thông qua PDPageContentStream của PDFBox"
+        }
+      ],
+      "related_symbols": [
+        "PdfViewerActivity.setupTouchInteraction",
+        "PdfViewerActivity.renderPageWithEdits",
+        "PdfViewerActivity.saveEditsToFile"
+      ],
+      "related_features": [
+        "pdf_line_effect"
+      ]
+    }
+  ],
+  "features": [
+    "pdf_esign",
+    "pdf_line_effect"
+  ],
+  "files": [
+    {
+      "path": "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt",
+      "language": "kotlin",
+      "package": "com.vandatgsts.demopdf",
+      "layer": "ui/activity",
+      "purpose": "Giao diện chính điều phối luồng tạo, chỉnh sửa văn bản và chữ ký PDF.",
+      "imports": [
+        "com.tom_roush.pdfbox.pdmodel.PDDocument",
+        "com.tom_roush.pdfbox.pdmodel.PDPage"
+      ],
+      "classes": [
+        "MainActivity"
+      ],
+      "objects": [],
+      "interfaces": [],
+      "main_symbols": [
+        "MainActivity.generateSamplePdf",
+        "MainActivity.signAndSavePdf",
+        "MainActivity.openPdfFile"
+      ],
+      "related_features": [
+        "pdf_esign"
+      ],
+      "related_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/SignatureView.kt",
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "keywords": [
+        "pdf edit",
+        "signature",
+        "openpdf",
+        "fileprovider"
+      ],
+      "risks": []
+    },
+    {
+      "path": "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+      "language": "kotlin",
+      "package": "com.vandatgsts.demopdf",
+      "layer": "ui/activity",
+      "purpose": "Màn hình hiển thị và chỉnh sửa PDF nâng cao (Sửa chữ inline, Highlight, Vẽ chữ ký, Quét vùng kẻ chữ Underline/Strikethrough).",
+      "imports": [
+        "android.graphics.pdf.PdfRenderer",
+        "com.tom_roush.pdfbox.pdmodel.PDDocument",
+        "com.tom_roush.pdfbox.pdmodel.PDPageContentStream"
+      ],
+      "classes": [
+        "PdfViewerActivity"
+      ],
+      "objects": [],
+      "interfaces": [],
+      "main_symbols": [
+        "PdfViewerActivity.setupPdfRenderer",
+        "PdfViewerActivity.setupTouchInteraction",
+        "PdfViewerActivity.showInlineEditText",
+        "PdfViewerActivity.closeAndSaveInlineEditText",
+        "PdfViewerActivity.detectTextBlocks",
+        "PdfViewerActivity.renderPageWithEdits",
+        "PdfViewerActivity.saveEditsToFile"
+      ],
+      "related_features": [
+        "pdf_esign",
+        "pdf_line_effect"
+      ],
+      "related_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt"
+      ],
+      "keywords": [
+        "pdf view",
+        "pdf renderer",
+        "inline edit",
+        "highlight",
+        "underline",
+        "strikethrough",
+        "region selection"
+      ],
+      "risks": []
+    },
+    {
+      "path": "app/src/main/java/com/vandatgsts/demopdf/SignatureView.kt",
+      "language": "kotlin",
+      "package": "com.vandatgsts.demopdf",
+      "layer": "ui/view",
+      "purpose": "Custom View cho phép vẽ nét chữ ký tự do bằng Canvas.",
+      "imports": [],
+      "classes": [
+        "SignatureView"
+      ],
+      "objects": [],
+      "interfaces": [],
+      "main_symbols": [
+        "SignatureView.getSignatureBitmap",
+        "SignatureView.clear"
+      ],
+      "related_features": [
+        "pdf_esign"
+      ],
+      "related_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt"
+      ],
+      "keywords": [
+        "canvas",
+        "draw",
+        "signature pad"
+      ],
+      "risks": []
+    }
+  ],
+  "important_files": [
+    "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt",
+    "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+    "app/src/main/java/com/vandatgsts/demopdf/SignatureView.kt"
+  ],
+  "risks": [],
+  "dead_code": [],
+  "duplicate_logic": []
+}

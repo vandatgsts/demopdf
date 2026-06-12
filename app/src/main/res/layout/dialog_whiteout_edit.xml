@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Xóa &amp; Sửa chữ tại điểm chạm"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:textColor="#1F2937"
+        android:layout_marginBottom="4dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Hệ thống sẽ vẽ một ô trắng để xóa chữ cũ và đè chữ mới lên."
+        android:textSize="12sp"
+        android:textColor="#6B7280"
+        android:layout_marginBottom="16dp"/>
+
+    <EditText
+        android:id="@+id/etNewText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Nhập nội dung chữ mới"
+        android:inputType="text"
+        android:textSize="15sp"
+        android:background="@android:drawable/editbox_background_normal"
+        android:padding="10dp"
+        android:layout_marginBottom="12dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Độ rộng vùng cần xóa chữ cũ (points):"
+        android:textSize="13sp"
+        android:textColor="#374151"
+        android:layout_marginBottom="4dp"/>
+
+    <EditText
+        android:id="@+id/etWhiteoutWidth"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="150"
+        android:inputType="numberDecimal"
+        android:textSize="15sp"
+        android:background="@android:drawable/editbox_background_normal"
+        android:padding="10dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end"
+        android:layout_marginTop="16dp">
+
+        <Button
+            android:id="@+id/btnWhiteoutCancel"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Hủy"
+            android:textColor="#6B7280"/>
+
+        <Button
+            android:id="@+id/btnWhiteoutConfirm"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Xác nhận"
+            android:backgroundTint="#F59E0B"
+            android:textColor="#FFFFFF"
+            android:layout_marginStart="8dp"/>
+    </LinearLayout>
+</LinearLayout>

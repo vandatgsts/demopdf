@@ -1,0 +1,186 @@
+{
+  "bugs": [
+    {
+      "id": "BUG-0001",
+      "title": "NoClassDefFoundError: org/openpdf/text/pdf/ExtendedColor (java.awt.Color)",
+      "status": "FIXED",
+      "feature": "PDF Generation",
+      "affected_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt"
+      ],
+      "symptoms": [
+        "Crash ngay khi khởi động app hoặc khi nhấn 'Tạo PDF mẫu' với lỗi NoClassDefFoundError do thiếu java.awt.Color"
+      ],
+      "logs": [
+        "java.lang.NoClassDefFoundError: Failed resolution of: Ljava/awt/Color; ... at org.openpdf.text.pdf.ExtendedColor"
+      ],
+      "root_cause": "Thư viện OpenPDF 3.x phụ thuộc vào Java AWT (java.awt.Color) vốn không tồn tại trên hệ điều hành Android.",
+      "fix": "Chuyển toàn bộ dự án sang thư viện iTextG:5.5.10 và loại bỏ hoàn toàn các gói java.awt.",
+      "fixed_files": [
+        "app/build.gradle.kts",
+        "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt",
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "verification_steps": [
+        "Nhấn tạo PDF mẫu hoạt động bình thường, không crash."
+      ],
+      "regression_risk": "Low",
+      "related_bugs": []
+    },
+    {
+      "id": "BUG-0002",
+      "title": "NoSuchMethodError: MappedByteBuffer.duplicate()",
+      "status": "FIXED",
+      "feature": "Font Loading",
+      "affected_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt",
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "symptoms": [
+        "Crash khi cố gắng nạp font TrueType /system/fonts/Roboto-Regular.ttf với lỗi NoSuchMethodError cho duplicate()Ljava/nio/MappedByteBuffer;"
+      ],
+      "logs": [
+        "java.lang.NoSuchMethodError: No virtual method duplicate()Ljava/nio/MappedByteBuffer; in class Ljava/nio/MappedByteBuffer; or its super classes"
+      ],
+      "root_cause": "OpenPDF 3.x sử dụng Memory Mapped File để đọc tệp font. Phương thức MappedByteBuffer.duplicate() trên Java 9+ trả về MappedByteBuffer nhưng trên Android runtime chỉ trả về ByteBuffer, gây lệch kiểu dữ liệu.",
+      "fix": "Chuyển sang thư viện iTextG tương thích Java 7/8 nguyên bản nên không gặp lỗi lệch kiểu trả về này.",
+      "fixed_files": [
+        "app/build.gradle.kts",
+        "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt",
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "verification_steps": [
+        "Chương trình chạy và nạp font bình thường."
+      ],
+      "regression_risk": "Low",
+      "related_bugs": []
+    },
+    {
+      "id": "BUG-0003",
+      "title": "NoSuchMethodError: Stream.toList()",
+      "status": "FIXED",
+      "feature": "Image Parsing",
+      "affected_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "symptoms": [
+        "Crash khi lưu tệp PDF có chứa chữ ký với lỗi NoSuchMethodError liên quan đến Stream.toList()."
+      ],
+      "logs": [
+        "java.lang.NoSuchMethodError: No interface method toList()Ljava/util/List; in class Ljava/util/stream/Stream; or its super classes"
+      ],
+      "root_cause": "OpenPDF 3.0.5 gọi Stream.toList() (Java 16+) để phân tích định dạng ảnh, phương thức này không được hỗ trợ mặc định trên Android cũ.",
+      "fix": "Chuyển đổi sang thư viện iTextG (Java 8 target) hoàn toàn không sử dụng các API Java 16+ này.",
+      "fixed_files": [
+        "app/build.gradle.kts",
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "verification_steps": [
+        "Tránh được lỗi NoSuchMethodError khi gọi Image.getInstance()."
+      ],
+      "regression_risk": "Low",
+      "related_bugs": []
+    },
+    {
+      "id": "BUG-0004",
+      "title": "NoClassDefFoundError: javax/imageio/ImageIO",
+      "status": "FIXED",
+      "feature": "Image I/O",
+      "affected_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "symptoms": [
+        "Crash khi cố gắng chèn chữ ký PNG vào PDF với lỗi thiếu class javax.imageio.ImageIO."
+      ],
+      "logs": [
+        "java.lang.NoClassDefFoundError: Failed resolution of: Ljavax/imageio/ImageIO;"
+      ],
+      "root_cause": "OpenPDF 1.x sử dụng javax.imageio.ImageIO của Java SE Desktop để đọc ảnh PNG, gói này không khả dụng trên Android SDK.",
+      "fix": "Chuyển sang thư viện iTextG, tự động sử dụng BitmapFactory của Android bên dưới lớp Image.getInstance().",
+      "fixed_files": [
+        "app/build.gradle.kts",
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "verification_steps": [
+        "Có thể convert Bitmap chữ ký thành ảnh PDF qua Image.getInstance()."
+      ],
+      "regression_risk": "Low",
+      "related_bugs": []
+    },
+    {
+      "id": "BUG-0005",
+      "title": "Crash khi nhấn nút Lưu trên màn hình xem PDF (iTextG)",
+      "status": "FIXED",
+      "feature": "PDF Saving",
+      "affected_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "symptoms": [
+        "Khi nhấn nút 'Lưu' ở màn hình PdfViewerActivity, ứng dụng bị crash đột ngột."
+      ],
+      "logs": [
+        "Chưa có thông tin logcat cụ thể từ thiết bị người dùng."
+      ],
+      "root_cause": "Tranh chấp tài nguyên và khóa tệp tin (File Lock): File gốc vẫn bị khóa bởi luồng native của PdfRenderer / ParcelFileDescriptor. Việc mở FileOutputStream ghi trực tiếp vào file gốc gây lỗi xung đột truy cập.",
+      "fix": "Chuyển sang cơ chế lưu gián tiếp qua tệp tạm trung gian temp_output.pdf, giải phóng luồng ghi/đọc của iText trước, sau đó mới sao chép đè lên file gốc. Đồng thời đổi catch Exception thành Throwable để bắt mọi lỗi JVM runtime.",
+      "fixed_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "verification_steps": [
+        "Nhấn nút Lưu, thay đổi được ghi nhận vĩnh viễn vào tệp PDF gốc thành công mà không gây crash."
+      ],
+      "regression_risk": "Low",
+      "related_bugs": []
+    },
+    {
+      "id": "BUG-0006",
+      "title": "Lưu chỉnh sửa PDF thành công nhưng tệp tin gốc ngoài thiết bị không thay đổi",
+      "status": "FIXED",
+      "feature": "PDF Sync & SAF",
+      "affected_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt",
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "symptoms": [
+        "Khi người dùng chỉnh sửa tệp PDF và nhấn 'Lưu', ứng dụng báo toast 'Đã lưu chỉnh sửa vào PDF thành công!' nhưng khi kiểm tra lại tệp tin PDF gốc ở bộ nhớ thiết bị thì không thấy tệp tin thay đổi."
+      ],
+      "logs": [],
+      "root_cause": "Khi người dùng chọn file PDF thông qua bộ chọn file, MainActivity thực hiện sao chép file đó vào thư mục lưu trữ nội bộ của app dưới dạng tệp filesDir/input.pdf và chỉ truyền đường dẫn cục bộ này sang PdfViewerActivity. PdfViewerActivity chỉ lưu đè lên tệp cục bộ này mà không đồng bộ/ghi đè ngược lại Uri gốc đã được người dùng chọn.",
+      "fix": "Truyền thêm Uri gốc (PDF_FILE_URI) từ MainActivity sang PdfViewerActivity thông qua Intent extras. Trong PdfViewerActivity.kt, sau khi lưu thành công tệp cục bộ, sử dụng contentResolver.openOutputStream(uri, \"w\") để ghi đè ngược nội dung tệp đã chỉnh sửa sang Uri gốc bên ngoài thiết bị.",
+      "fixed_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt",
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "verification_steps": [
+        "Thực hiện chỉnh sửa và lưu PDF, kiểm tra tệp gốc bên ngoài thiết bị xem có cập nhật nội dung chỉnh sửa hay không."
+      ],
+      "regression_risk": "Low",
+      "related_bugs": []
+    },
+    {
+      "id": "BUG-0007",
+      "title": "Crash NullPointerException khi đóng/lưu inline EditText do lỗi đệ quy/race condition",
+      "status": "FIXED",
+      "feature": "Inline Text Editing",
+      "affected_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "symptoms": [
+        "Khi người dùng chạm ra ngoài vùng soạn thảo hoặc hoàn tất việc chỉnh sửa chữ trực tiếp trên trang, ứng dụng bị crash đột ngột với lỗi NullPointerException tại ViewGroup.removeFromArray."
+      ],
+      "logs": [
+        "java.lang.NullPointerException: Attempt to write to field 'android.view.ViewParent android.view.View.mParent' on a null object reference ... at android.view.ViewGroup.removeFromArray(ViewGroup.java:5203) ... at com.vandatgsts.demopdf.PdfViewerActivity.closeAndSaveInlineEditText(PdfViewerActivity.kt:978)"
+      ],
+      "root_cause": "Việc xóa EditText khỏi container (removeView) kích hoạt sự kiện mất tiêu điểm (Focus Loss), gây đệ quy gọi lại hàm closeAndSaveInlineEditText lần hai khi biến activeInlineEditText vẫn chưa được gán thành null từ lần gọi thứ nhất, dẫn đến gọi removeView hai lần liên tục trên cùng một View.",
+      "fix": "Gán null cho các biến activeInlineEditText và activeInlineBlock ngay ở đầu hàm closeAndSaveInlineEditText trước khi thực hiện removeView hay ẩn bàn phím để chặn hoàn toàn cuộc gọi đệ quy reentrancy.",
+      "fixed_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "verification_steps": [
+        "Chạm vào khung xanh, gõ chữ rồi tap ra ngoài hoặc bấm Done nhiều lần liên tiếp, kiểm tra ứng dụng chạy ổn định và không bị crash."
+      ],
+      "regression_risk": "Low",
+      "related_bugs": []
+    }
+  ]
+}

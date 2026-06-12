@@ -1,0 +1,541 @@
+{
+  "project_name": "demopdf",
+  "platform": "android_native",
+  "language": "kotlin",
+  "symbols": [
+    {
+      "name": "onResume",
+      "qualified_name": "MainActivity.onResume",
+      "type": "method",
+      "platform": "android",
+      "language": "kotlin",
+      "file": "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt",
+      "owner": "MainActivity",
+      "signature": "override fun onResume()",
+      "start_line": 68,
+      "end_line": 75,
+      "is_suspend": false,
+      "calls": [
+        "ActivityResultLauncher.launch"
+      ],
+      "called_by": [],
+      "reads_state": [
+        "isFirstLaunch"
+      ],
+      "writes_state": [
+        "isFirstLaunch"
+      ],
+      "ads_calls": [],
+      "billing_calls": [],
+      "firebase_calls": [],
+      "method_channel_handlers": [],
+      "side_effects": [
+        "Tự động kích hoạt trình chọn file PDF của Android ngay khi mở app lần đầu"
+      ],
+      "related_symbols": [],
+      "related_files": [],
+      "thread_context": "main",
+      "tags": [
+        "lifecycle"
+      ]
+    },
+    {
+      "name": "copyUriToLocalFile",
+      "qualified_name": "MainActivity.copyUriToLocalFile",
+      "type": "method",
+      "platform": "android",
+      "language": "kotlin",
+      "file": "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt",
+      "owner": "MainActivity",
+      "signature": "private fun copyUriToLocalFile(uri: Uri)",
+      "start_line": 78,
+      "end_line": 95,
+      "is_suspend": false,
+      "calls": [
+        "ContentResolver.openInputStream",
+        "InputStream.copyTo",
+        "MainActivity.navigateToPdfViewer"
+      ],
+      "called_by": [
+        "MainActivity.selectPdfLauncher"
+      ],
+      "reads_state": [
+        "sourcePdfFile"
+      ],
+      "writes_state": [
+        "lastSelectedFileName"
+      ],
+      "ads_calls": [],
+      "billing_calls": [],
+      "firebase_calls": [],
+      "method_channel_handlers": [],
+      "side_effects": [
+        "Sao chép tệp PDF người dùng chọn vào input.pdf và chuyển thẳng sang màn hình xem/sửa PDF"
+      ],
+      "related_symbols": [
+        "MainActivity.navigateToPdfViewer"
+      ],
+      "related_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "thread_context": "main",
+      "tags": [
+        "file_io",
+        "navigation"
+      ]
+    },
+    {
+      "name": "generateSamplePdf",
+      "qualified_name": "MainActivity.generateSamplePdf",
+      "type": "method",
+      "platform": "android",
+      "language": "kotlin",
+      "file": "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt",
+      "owner": "MainActivity",
+      "signature": "private fun generateSamplePdf()",
+      "start_line": 122,
+      "end_line": 174,
+      "is_suspend": false,
+      "calls": [
+        "PDDocument",
+        "PDPage",
+        "PDPageContentStream",
+        "MainActivity.navigateToPdfViewer"
+      ],
+      "called_by": [
+        "MainActivity.onCreate"
+      ],
+      "reads_state": [
+        "sourcePdfFile"
+      ],
+      "writes_state": [],
+      "ads_calls": [],
+      "billing_calls": [],
+      "firebase_calls": [],
+      "method_channel_handlers": [],
+      "side_effects": [
+        "Tạo tệp PDF mẫu bằng PDFBox và chuyển tiếp sang màn hình xem/sửa PDF"
+      ],
+      "related_symbols": [
+        "MainActivity.navigateToPdfViewer"
+      ],
+      "related_files": [
+        "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt"
+      ],
+      "thread_context": "main",
+      "tags": [
+        "pdf_generation",
+        "navigation"
+      ]
+    },
+    {
+      "name": "setupPdfRenderer",
+      "qualified_name": "PdfViewerActivity.setupPdfRenderer",
+      "type": "method",
+      "platform": "android",
+      "language": "kotlin",
+      "file": "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+      "owner": "PdfViewerActivity",
+      "signature": "private fun setupPdfRenderer()",
+      "start_line": 266,
+      "end_line": 286,
+      "is_suspend": false,
+      "calls": [
+        "ParcelFileDescriptor.open",
+        "PdfRenderer"
+      ],
+      "called_by": [
+        "PdfViewerActivity.onCreate",
+        "PdfViewerActivity.saveEditsToFile"
+      ],
+      "reads_state": [
+        "pdfFilePath"
+      ],
+      "writes_state": [
+        "fileDescriptor",
+        "pdfRenderer",
+        "pageCount"
+      ],
+      "ads_calls": [],
+      "billing_calls": [],
+      "firebase_calls": [],
+      "method_channel_handlers": [],
+      "side_effects": [
+        "Nạp tài liệu PDF và khởi tạo công cụ vẽ đồ họa"
+      ],
+      "related_symbols": [
+        "PdfViewerActivity.showPage"
+      ],
+      "related_files": [],
+      "thread_context": "main",
+      "tags": [
+        "pdf_rendering"
+      ]
+    },
+    {
+      "name": "setupTouchInteraction",
+      "qualified_name": "PdfViewerActivity.setupTouchInteraction",
+      "type": "method",
+      "platform": "android",
+      "language": "kotlin",
+      "file": "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+      "owner": "PdfViewerActivity",
+      "signature": "private fun setupTouchInteraction()",
+      "start_line": 289,
+      "end_line": 548,
+      "is_suspend": false,
+      "calls": [
+        "GestureDetector",
+        "ImageView.setOnTouchListener"
+      ],
+      "called_by": [
+        "PdfViewerActivity.onCreate"
+      ],
+      "reads_state": [
+        "isHighlightMode",
+        "isLineEffectMode",
+        "isEditTextMode"
+      ],
+      "writes_state": [
+        "selectionRect",
+        "pendingEdits"
+      ],
+      "ads_calls": [],
+      "billing_calls": [],
+      "firebase_calls": [],
+      "method_channel_handlers": [],
+      "side_effects": [
+        "Bắt sự kiện vuốt chạm, vẽ highlight hoặc quét vùng kẻ chữ (Underline / Strikethrough) trên ImageView"
+      ],
+      "related_symbols": [
+        "PdfViewerActivity.findEditAt",
+        "PdfViewerActivity.renderPageWithEdits"
+      ],
+      "related_files": [],
+      "thread_context": "main",
+      "tags": [
+        "interaction"
+      ]
+    },
+    {
+      "name": "showEditOptionsDialog",
+      "qualified_name": "PdfViewerActivity.showEditOptionsDialog",
+      "type": "method",
+      "platform": "android",
+      "language": "kotlin",
+      "file": "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+      "owner": "PdfViewerActivity",
+      "signature": "private fun showEditOptionsDialog(xTouch: Float, yTouch: Float)",
+      "start_line": 597,
+      "end_line": 624,
+      "is_suspend": false,
+      "calls": [
+        "AlertDialog.Builder"
+      ],
+      "called_by": [
+        "PdfViewerActivity.setupTouchInteraction"
+      ],
+      "reads_state": [
+        "currentPage",
+        "ivPdfPage"
+      ],
+      "writes_state": [],
+      "ads_calls": [],
+      "billing_calls": [],
+      "firebase_calls": [],
+      "method_channel_handlers": [],
+      "side_effects": [
+        "Tính toán tọa độ điểm chạm trên trang PDF gốc và mở menu lựa chọn"
+      ],
+      "related_symbols": [
+        "PdfViewerActivity.showInsertTextDialog",
+        "PdfViewerActivity.showSignatureDialog",
+        "PdfViewerActivity.showWhiteoutEditDialog",
+        "PdfViewerActivity.showHighlightDialog"
+      ],
+      "related_files": [],
+      "thread_context": "main",
+      "tags": [
+        "interaction",
+        "dialog"
+      ]
+    },
+    {
+      "name": "showWhiteoutEditDialog",
+      "qualified_name": "PdfViewerActivity.showWhiteoutEditDialog",
+      "type": "method",
+      "platform": "android",
+      "language": "kotlin",
+      "file": "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+      "owner": "PdfViewerActivity",
+      "signature": "private fun showWhiteoutEditDialog(pdfX: Float, pdfY: Float)",
+      "start_line": 715,
+      "end_line": 746,
+      "is_suspend": false,
+      "calls": [
+        "AlertDialog.Builder"
+      ],
+      "called_by": [
+        "PdfViewerActivity.showEditOptionsDialog"
+      ],
+      "reads_state": [],
+      "writes_state": [
+        "pendingEdits"
+      ],
+      "ads_calls": [],
+      "billing_calls": [],
+      "firebase_calls": [],
+      "method_channel_handlers": [],
+      "side_effects": [
+        "Hiển thị hộp thoại che chữ cũ và nhập chữ mới để chèn đè"
+      ],
+      "related_symbols": [
+        "PdfViewerActivity.renderPageWithEdits"
+      ],
+      "related_files": [],
+      "thread_context": "main",
+      "tags": [
+        "interaction",
+        "dialog"
+      ]
+    },
+    {
+      "name": "renderPageWithEdits",
+      "qualified_name": "PdfViewerActivity.renderPageWithEdits",
+      "type": "method",
+      "platform": "android",
+      "language": "kotlin",
+      "file": "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+      "owner": "PdfViewerActivity",
+      "signature": "private fun renderPageWithEdits()",
+      "start_line": 749,
+      "end_line": 958,
+      "is_suspend": false,
+      "calls": [
+        "PdfRenderer.Page.render",
+        "Canvas",
+        "Canvas.drawRect",
+        "Canvas.drawText",
+        "Canvas.drawBitmap",
+        "Canvas.drawLine",
+        "ImageView.setImageBitmap"
+      ],
+      "called_by": [
+        "PdfViewerActivity.showPage",
+        "PdfViewerActivity.setupTouchInteraction",
+        "PdfViewerActivity.showInsertTextDialog",
+        "PdfViewerActivity.showSignatureDialog",
+        "PdfViewerActivity.showWhiteoutEditDialog",
+        "PdfViewerActivity.showHighlightDialog"
+      ],
+      "reads_state": [
+        "currentPageIndex",
+        "pdfRenderer",
+        "pendingEdits",
+        "isEditTextMode",
+        "isLineEffectMode",
+        "selectionRect"
+      ],
+      "writes_state": [
+        "currentPage"
+      ],
+      "ads_calls": [],
+      "billing_calls": [],
+      "firebase_calls": [],
+      "method_channel_handlers": [],
+      "side_effects": [
+        "Vẽ đè tạm thời các chỉnh sửa văn bản, highlight, nét vẽ gạch dưới/gạch ngang và khung quét xem trước lên ảnh trên màn hình"
+      ],
+      "related_symbols": [],
+      "related_files": [],
+      "thread_context": "main",
+      "tags": [
+        "graphics",
+        "preview"
+      ]
+    },
+    {
+      "name": "saveEditsToFile",
+      "qualified_name": "PdfViewerActivity.saveEditsToFile",
+      "type": "method",
+      "platform": "android",
+      "language": "kotlin",
+      "file": "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+      "owner": "PdfViewerActivity",
+      "signature": "private fun saveEditsToFile()",
+      "start_line": 991,
+      "end_line": 1135,
+      "is_suspend": false,
+      "calls": [
+        "File.copyTo",
+        "PDDocument.load",
+        "PDPageContentStream",
+        "PDPageContentStream.addRect",
+        "PDPageContentStream.fill",
+        "PDPageContentStream.showText",
+        "LosslessFactory.createFromImage",
+        "PDPageContentStream.drawImage",
+        "PDPageContentStream.moveTo",
+        "PDPageContentStream.lineTo",
+        "PDPageContentStream.stroke"
+      ],
+      "called_by": [
+        "PdfViewerActivity.btnSaveEdits.setOnClickListener"
+      ],
+      "reads_state": [
+        "pdfFilePath",
+        "pendingEdits",
+        "currentPageIndex"
+      ],
+      "writes_state": [
+        "currentPage",
+        "pdfRenderer",
+        "fileDescriptor"
+      ],
+      "ads_calls": [],
+      "billing_calls": [],
+      "firebase_calls": [],
+      "method_channel_handlers": [],
+      "side_effects": [
+        "Ghi đè tất cả các thay đổi tạm thời bằng PDFBox-Android và cập nhật lại trình hiển thị"
+      ],
+      "related_symbols": [
+        "PdfViewerActivity.setupPdfRenderer"
+      ],
+      "related_files": [],
+      "thread_context": "main",
+      "tags": [
+        "file_io",
+        "pdf_editing"
+      ]
+    },
+    {
+      "name": "showInlineEditText",
+      "qualified_name": "PdfViewerActivity.showInlineEditText",
+      "type": "method",
+      "platform": "android",
+      "language": "kotlin",
+      "file": "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+      "owner": "PdfViewerActivity",
+      "signature": "private fun showInlineEditText(block: TextBlock, pdfX: Float, pdfY: Float, wView: Float, hView: Float, wPdf: Float, hPdf: Float)",
+      "start_line": 1149,
+      "end_line": 1216,
+      "is_suspend": false,
+      "calls": [
+        "EditText",
+        "FrameLayout.addView"
+      ],
+      "called_by": [
+        "PdfViewerActivity.setupTouchInteraction"
+      ],
+      "reads_state": [],
+      "writes_state": [
+        "activeInlineBlock",
+        "activeInlineEditText"
+      ],
+      "ads_calls": [],
+      "billing_calls": [],
+      "firebase_calls": [],
+      "method_channel_handlers": [],
+      "side_effects": [
+        "Tạo và chèn EditText động lên trên trang để người dùng sửa trực tiếp trên tài liệu"
+      ],
+      "related_symbols": [
+        "PdfViewerActivity.closeAndSaveInlineEditText"
+      ],
+      "related_files": [],
+      "thread_context": "main",
+      "tags": [
+        "interaction",
+        "inline_editing"
+      ]
+    },
+    {
+      "name": "closeAndSaveInlineEditText",
+      "qualified_name": "PdfViewerActivity.closeAndSaveInlineEditText",
+      "type": "method",
+      "platform": "android",
+      "language": "kotlin",
+      "file": "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+      "owner": "PdfViewerActivity",
+      "signature": "private fun closeAndSaveInlineEditText()",
+      "start_line": 1219,
+      "end_line": 1241,
+      "is_suspend": false,
+      "calls": [
+        "FrameLayout.removeView",
+        "InputMethodManager.hideSoftInputFromWindow"
+      ],
+      "called_by": [
+        "PdfViewerActivity.showInlineEditText",
+        "PdfViewerActivity.showPage",
+        "PdfViewerActivity.btnToggleEdit.setOnClickListener"
+      ],
+      "reads_state": [
+        "activeInlineEditText",
+        "activeInlineBlock"
+      ],
+      "writes_state": [
+        "activeInlineEditText",
+        "activeInlineBlock",
+        "pendingEdits"
+      ],
+      "ads_calls": [],
+      "billing_calls": [],
+      "firebase_calls": [],
+      "method_channel_handlers": [],
+      "side_effects": [
+        "Lưu lại nội dung sửa chữ inline và gỡ bỏ EditText động khỏi giao diện"
+      ],
+      "related_symbols": [
+        "PdfViewerActivity.renderPageWithEdits"
+      ],
+      "related_files": [],
+      "thread_context": "main",
+      "tags": [
+        "interaction",
+        "inline_editing"
+      ]
+    },
+    {
+      "name": "detectTextBlocks",
+      "qualified_name": "PdfViewerActivity.detectTextBlocks",
+      "type": "method",
+      "platform": "android",
+      "language": "kotlin",
+      "file": "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+      "owner": "PdfViewerActivity",
+      "signature": "private fun detectTextBlocks(pageIndex: Int)",
+      "start_line": 1295,
+      "end_line": 1317,
+      "is_suspend": false,
+      "calls": [
+        "PDDocument.load",
+        "AndroidTextStripper.writeText"
+      ],
+      "called_by": [
+        "PdfViewerActivity.showPage"
+      ],
+      "reads_state": [
+        "pdfFilePath"
+      ],
+      "writes_state": [
+        "detectedTextBlocks"
+      ],
+      "ads_calls": [],
+      "billing_calls": [],
+      "firebase_calls": [],
+      "method_channel_handlers": [],
+      "side_effects": [
+        "Sử dụng PDFTextStripper của PDFBox để trích xuất văn bản và lấy tọa độ thực"
+      ],
+      "related_symbols": [],
+      "related_files": [],
+      "thread_context": "main",
+      "tags": [
+        "pdf_parsing",
+        "text_detection"
+      ]
+    }
+  ]
+}
