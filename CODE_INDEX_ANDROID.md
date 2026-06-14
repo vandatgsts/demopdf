@@ -1,23 +1,23 @@
 # Android Code Index - PDF E-Sign Demo
 
-Dự án này là một ứng dụng Android Native (Kotlin) demo khả năng hiển thị và biên tập tài liệu PDF nâng cao. Hỗ trợ tạo mới tài liệu PDF mẫu, ký tên tay (có thể kéo thả, co giãn kích thước chữ ký sau khi vẽ), chỉnh sửa chèn/sửa chữ trực tiếp trên văn bản (inline editing), tô sáng (Highlight) và kẻ chữ gạch chân (Underline) hoặc gạch ngang (Strikethrough) văn bản thông qua quét vùng ngón tay. Ứng dụng sử dụng thư viện **PDFBox-Android** (`com.tom-roush:pdfbox-android:2.0.27.0`) làm nòng cốt xử lý PDF.
+Dự án này là một ứng dụng Android Native (Kotlin) demo khả năng hiển thị và biên tập tài liệu PDF nâng cao. Hỗ trợ tạo mới tài liệu PDF mẫu, ký tên tay (có thể kéo thả, co giãn kích thước chữ ký sau khi vẽ), chỉnh sửa chèn/sửa chữ trực tiếp trên văn bản (inline editing), tô sáng (Highlight) và kẻ chữ gạch chân (Underline) hoặc gạch ngang (Strikethrough) văn bản thông qua quét vùng ngón tay. Ứng dụng sử dụng mã nguồn thư viện **PDFBox-Android** được tích hợp cục bộ dưới dạng module `:mylibrary` (gói `com.vandatgsts.mylibrary`) làm nòng cốt xử lý PDF.
 
 ---
 
 ## 🛠️ Công nghệ sử dụng
 - **Ngôn ngữ:** Kotlin
-- **Thư viện PDF:** PDFBox-Android 2.0.27.0
+- **Thư viện PDF:** PDFBox-Android clone tích hợp cục bộ (`:mylibrary`)
 - **Kiến trúc:** Model-View-Controller (MVC) tối giản
 
 ---
 
 ## 📁 Cấu trúc thư mục chính
 
-- [MainActivity.kt](file:///E:/test/demopdf/app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt): Chuyển tiếp chọn file PDF hoặc tự tạo PDF hợp đồng mẫu.
-- [PdfViewerActivity.kt](file:///E:/test/demopdf/app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt): Màn hình xem và chỉnh sửa PDF chính. Quản lý trạng thái và vẽ các đối tượng chỉnh sửa như text chèn, highlight, chữ ký (có kéo thả, co giãn bằng góc resize handle), gạch chân/gạch ngang.
-- [SignatureView.kt](file:///E:/test/demopdf/app/src/main/java/com/vandatgsts/demopdf/SignatureView.kt): Custom View cho phép người dùng vẽ chữ ký tay tự do trên màn hình cảm ứng, xuất ra bitmap để đưa vào tài liệu.
-- [activity_pdf_viewer.xml](file:///E:/test/demopdf/app/src/main/res/layout/activity_pdf_viewer.xml): Layout màn hình Viewer chứa thanh công cụ chỉnh sửa (Sửa chữ, Kẻ chữ, Bút dạ, Lưu) và vùng hiển thị trang PDF.
-- [AndroidManifest.xml](file:///E:/test/demopdf/app/src/main/AndroidManifest.xml): Cấu hình quyền và thiết lập FileProvider để chia sẻ file PDF cho các ứng dụng xem PDF ngoài một cách an toàn.
+- [MainActivity.kt](file:///E:/Code/Vandatgsts/demopdf/app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt): Chuyển tiếp chọn file PDF hoặc tự tạo PDF hợp đồng mẫu.
+- [PdfViewerActivity.kt](file:///E:/Code/Vandatgsts/demopdf/pdfeditor/src/main/java/com/vandatgsts/pdfeditor/PdfViewerActivity.kt): Màn hình xem và chỉnh sửa PDF chính. Quản lý trạng thái và vẽ các đối tượng chỉnh sửa như text chèn, highlight, chữ ký (có kéo thả, co giãn bằng góc resize handle), gạch chân/gạch ngang, và thay thế/chèn ảnh.
+- [SignatureView.kt](file:///E:/Code/Vandatgsts/demopdf/pdfeditor/src/main/java/com/vandatgsts/pdfeditor/SignatureView.kt): Custom View cho phép người dùng vẽ chữ ký tay tự do trên màn hình cảm ứng, xuất ra bitmap để đưa vào tài liệu.
+- [activity_pdf_viewer.xml](file:///E:/Code/Vandatgsts/demopdf/pdfeditor/src/main/res/layout/activity_pdf_viewer.xml): Layout màn hình Viewer chứa thanh công cụ chỉnh sửa gộp vào 1 Menu (`btnMenuTools`) và vùng hiển thị trang PDF.
+- [AndroidManifest.xml](file:///E:/Code/Vandatgsts/demopdf/app/src/main/AndroidManifest.xml): Cấu hình quyền và thiết lập FileProvider để chia sẻ file PDF cho các ứng dụng xem PDF ngoài một cách an toàn.
 
 ---
 

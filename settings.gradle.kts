@@ -19,9 +19,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url = uri("https://jitpack.io") }
     }
 }
 
 rootProject.name = "demopdf"
 include(":app")
- 
+include(":mylibrary")
+include(":pdfeditor")

@@ -4,10 +4,10 @@
   "language": "kotlin",
   "architecture": "Single Activity, MVC",
   "dependency_injection": "none",
-  "modules": [":app"],
+  "modules": [":app", ":mylibrary", ":pdfeditor"],
   "entry_points": [
     "com.vandatgsts.demopdf.MainActivity",
-    "com.vandatgsts.demopdf.PdfViewerActivity"
+    "com.vandatgsts.pdfeditor.PdfViewerActivity"
   ],
   "method_channels": [],
   "ads": [],
@@ -84,8 +84,8 @@
       "layer": "ui/activity",
       "purpose": "Giao diện chính điều phối luồng tạo, chỉnh sửa văn bản và chữ ký PDF.",
       "imports": [
-        "com.tom_roush.pdfbox.pdmodel.PDDocument",
-        "com.tom_roush.pdfbox.pdmodel.PDPage"
+        "com.vandatgsts.mylibrary.pdfbox.pdmodel.PDDocument",
+        "com.vandatgsts.mylibrary.pdfbox.pdmodel.PDPage"
       ],
       "classes": [
         "MainActivity"
@@ -107,21 +107,21 @@
       "keywords": [
         "pdf edit",
         "signature",
-        "openpdf",
+        "pdfbox",
         "fileprovider"
       ],
       "risks": []
     },
     {
-      "path": "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
+      "path": "pdfeditor/src/main/java/com/vandatgsts/pdfeditor/PdfViewerActivity.kt",
       "language": "kotlin",
-      "package": "com.vandatgsts.demopdf",
+      "package": "com.vandatgsts.pdfeditor",
       "layer": "ui/activity",
       "purpose": "Màn hình hiển thị và chỉnh sửa PDF nâng cao (Sửa chữ inline, Highlight, Vẽ chữ ký, Quét vùng kẻ chữ Underline/Strikethrough).",
       "imports": [
         "android.graphics.pdf.PdfRenderer",
-        "com.tom_roush.pdfbox.pdmodel.PDDocument",
-        "com.tom_roush.pdfbox.pdmodel.PDPageContentStream"
+        "com.vandatgsts.mylibrary.pdfbox.pdmodel.PDDocument",
+        "com.vandatgsts.mylibrary.pdfbox.pdmodel.PDPageContentStream"
       ],
       "classes": [
         "PdfViewerActivity"
@@ -135,7 +135,10 @@
         "PdfViewerActivity.closeAndSaveInlineEditText",
         "PdfViewerActivity.detectTextBlocks",
         "PdfViewerActivity.renderPageWithEdits",
-        "PdfViewerActivity.saveEditsToFile"
+        "PdfViewerActivity.saveEditsToFile",
+        "PdfViewerActivity.deactivateAllModes",
+        "PdfViewerActivity.showSignatureDialogOrList",
+        "PdfViewerActivity.saveSignatureToStorage"
       ],
       "related_features": [
         "pdf_esign",
@@ -156,9 +159,47 @@
       "risks": []
     },
     {
-      "path": "app/src/main/java/com/vandatgsts/demopdf/SignatureView.kt",
+      "path": "pdfeditor/src/main/java/com/vandatgsts/pdfeditor/PdfEditorHelper.kt",
       "language": "kotlin",
-      "package": "com.vandatgsts.demopdf",
+      "package": "com.vandatgsts.pdfeditor",
+      "layer": "helper",
+      "purpose": "Lớp tiện ích helper xử lý việc tải PDF, phát hiện khối chữ và lưu các thay đổi trực tiếp bằng PDFBox.",
+      "imports": [
+        "com.vandatgsts.mylibrary.pdfbox.pdmodel.PDDocument",
+        "com.vandatgsts.mylibrary.pdfbox.pdmodel.PDPageContentStream",
+        "com.vandatgsts.mylibrary.pdfbox.text.PDFTextStripper"
+      ],
+      "classes": [
+        "TextBlock",
+        "AndroidTextStripper"
+      ],
+      "objects": [
+        "PdfEditorHelper"
+      ],
+      "interfaces": [],
+      "main_symbols": [
+        "PdfEditorHelper.detectTextBlocks",
+        "PdfEditorHelper.saveEdits",
+        "AndroidTextStripper.writeString"
+      ],
+      "related_features": [
+        "pdf_esign",
+        "pdf_line_effect"
+      ],
+      "related_files": [
+        "pdfeditor/src/main/java/com/vandatgsts/pdfeditor/PdfViewerActivity.kt"
+      ],
+      "keywords": [
+        "pdf helper",
+        "text extraction",
+        "pdfbox edit"
+      ],
+      "risks": []
+    },
+    {
+      "path": "pdfeditor/src/main/java/com/vandatgsts/pdfeditor/SignatureView.kt",
+      "language": "kotlin",
+      "package": "com.vandatgsts.pdfeditor",
       "layer": "ui/view",
       "purpose": "Custom View cho phép vẽ nét chữ ký tự do bằng Canvas.",
       "imports": [],
@@ -187,8 +228,9 @@
   ],
   "important_files": [
     "app/src/main/java/com/vandatgsts/demopdf/MainActivity.kt",
-    "app/src/main/java/com/vandatgsts/demopdf/PdfViewerActivity.kt",
-    "app/src/main/java/com/vandatgsts/demopdf/SignatureView.kt"
+    "pdfeditor/src/main/java/com/vandatgsts/pdfeditor/PdfViewerActivity.kt",
+    "pdfeditor/src/main/java/com/vandatgsts/pdfeditor/PdfEditorHelper.kt",
+    "pdfeditor/src/main/java/com/vandatgsts/pdfeditor/SignatureView.kt"
   ],
   "risks": [],
   "dead_code": [],

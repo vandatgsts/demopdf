@@ -2,6 +2,7 @@ package com.vandatgsts.demopdf
 
 import android.content.Intent
 import android.net.Uri
+import com.vandatgsts.pdfeditor.PdfViewerActivity
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.Button
@@ -11,13 +12,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
-import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.pdmodel.PDPage
-import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
-import com.tom_roush.pdfbox.pdmodel.font.PDType0Font
-import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
-import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import com.vandatgsts.mylibrary.pdfbox.android.PDFBoxResourceLoader
+import com.vandatgsts.mylibrary.pdfbox.pdmodel.PDDocument
+import com.vandatgsts.mylibrary.pdfbox.pdmodel.PDPage
+import com.vandatgsts.mylibrary.pdfbox.pdmodel.PDPageContentStream
+import com.vandatgsts.mylibrary.pdfbox.pdmodel.font.PDType0Font
+import com.vandatgsts.mylibrary.pdfbox.pdmodel.font.PDType1Font
+import com.vandatgsts.mylibrary.pdfbox.pdmodel.common.PDRectangle
 import java.io.File
 import java.io.FileOutputStream
 

@@ -39,8 +39,9 @@ dependencies {
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.core.ktx)
     implementation(libs.material)
-    // Sử dụng Apache PDFBox-Android (Apache 2.0 License) an toàn về bản quyền và tối ưu trên Android đời mới
-    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    // Sử dụng module thư viện cục bộ mylibrary đã clone
+    implementation(project(":mylibrary"))
+    implementation(project(":pdfeditor"))
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
