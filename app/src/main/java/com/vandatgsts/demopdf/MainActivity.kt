@@ -189,7 +189,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun navigateToPdfViewer(filePath: String, fileName: String, fileUri: String? = null) {
-        val intent = Intent(this, PdfViewerActivity::class.java).apply {
+        val intent = Intent(this, PdfViewer3rdActivity::class.java).apply {
             putExtra("PDF_FILE_PATH", filePath)
             putExtra("PDF_FILE_NAME", fileName)
             putExtra("PDF_FILE_URI", fileUri)

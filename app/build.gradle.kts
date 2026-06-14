@@ -42,6 +42,7 @@ dependencies {
     // Sử dụng module thư viện cục bộ mylibrary đã clone
     implementation(project(":mylibrary"))
     implementation(project(":pdfeditor"))
+    implementation("io.github.oothp:android-pdf-viewer:3.2.0-beta06")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)

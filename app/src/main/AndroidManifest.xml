@@ -26,6 +26,11 @@
             android:name="com.vandatgsts.pdfeditor.PdfViewerActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".PdfViewer3rdActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.vandatgsts.demopdf.fileprovider"

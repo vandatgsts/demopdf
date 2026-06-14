@@ -570,40 +570,6 @@ class PdfViewerActivity : AppCompatActivity() {
         }
     }
 
-    // Hiển thị Menu lựa chọn khi người dùng chạm vào PDF
-    private fun showEditOptionsDialog(xTouch: Float, yTouch: Float) {
-        val page = currentPage ?: return
-        val wView = ivPdfPage.width.toFloat()
-        val hView = ivPdfPage.height.toFloat()
-
-        if (wView <= 0 || hView <= 0) return
-
-        val wPdf = page.width.toFloat()
-        val hPdf = page.height.toFloat()
-
-        val pdfPoint = touchHelper.viewToPdf(xTouch, yTouch, wView, hView, wPdf, hPdf)
-        val pdfX = pdfPoint.x
-        val pdfY = pdfPoint.y
-
-        val options = arrayOf("Thêm chữ mới tại đây", "Ký tên tại đây", "Xóa & Sửa chữ tại đây", "Tô sáng (Highlight) tại đây", "Chèn/Thay ảnh tại đây")
-        AlertDialog.Builder(this)
-            .setTitle("Tùy chọn chỉnh sửa")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> showInsertTextDialog(pdfX, pdfY)
-                    1 -> showSignatureDialog(pdfX, pdfY)
-                    2 -> showWhiteoutEditDialog(pdfX, pdfY)
-                    3 -> showHighlightDialog(pdfX, pdfY)
-                    4 -> {
-                        editManager.imageInsertX = pdfX
-                        editManager.imageInsertY = pdfY
-                        selectImageLauncher.launch("image/*")
-                    }
-                }
-            }
-            .setNegativeButton("Hủy", null)
-            .show()
-    }
 
     // Hộp thoại tô sáng (Highlight) văn bản
     private fun showHighlightDialog(pdfX: Float, pdfY: Float) {

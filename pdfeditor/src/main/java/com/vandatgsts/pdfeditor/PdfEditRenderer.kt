@@ -113,7 +113,7 @@ class PdfEditRenderer {
      */
     fun renderEdits(
         canvas: Canvas,
-        baseBitmap: Bitmap,
+        baseBitmap: Bitmap?,
         scaleFactor: Float,
         pageHeight: Int,
         edits: List<PdfViewerActivity.PdfEdit>,
@@ -140,8 +140,10 @@ class PdfEditRenderer {
         selPaint.strokeWidth = 1.5f * scaleFactor
         selPaint.pathEffect = DashPathEffect(floatArrayOf(8f * scaleFactor, 6f * scaleFactor), 0f)
 
-        // Vẽ nền trang PDF sạch
-        canvas.drawBitmap(baseBitmap, 0f, 0f, null)
+        // Vẽ nền trang PDF sạch nếu có
+        baseBitmap?.let {
+            canvas.drawBitmap(it, 0f, 0f, null)
+        }
 
         // Vẽ từng edit
         for (edit in edits) {
