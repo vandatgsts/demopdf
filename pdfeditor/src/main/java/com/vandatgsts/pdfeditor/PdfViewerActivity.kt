@@ -32,8 +32,11 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.graphics.toColorInt
 import android.graphics.BitmapFactory
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 
@@ -80,44 +83,18 @@ class PdfViewerActivity : AppCompatActivity() {
         // Kẻ chữ: Gạch dưới (Underline) hoặc gạch ngang (Strikethrough)
         data class LineEffectEdit(val effectType: Int, override var x: Float, override var y: Float, var width: Float, var height: Float) : PdfEdit()
     }
-    private val pendingEdits = mutableListOf<PdfEdit>()
-    private val detectedTextBlocks = mutableListOf<TextBlock>()
 
-    // Biến quản lý trạng thái kéo thả phần tử
-    private var activeDragEdit: PdfEdit? = null
-    private var dragOffsetX = 0f
-    private var dragOffsetY = 0f
-
-    // Biến quản lý trạng thái co giãn (resize) chữ ký hoặc ảnh chèn
-    private var isResizing = false
-    private var activeResizeEdit: ResizableEdit? = null
-
-    // Biến quản lý trạng thái xoay (rotate) chữ ký hoặc ảnh chèn
-    private var isRotating = false
-    private var activeRotateEdit: ResizableEdit? = null
-    private var initialTouchAngle = 0.0
-    private var initialEditRotation = 0f
+    // ---- Ba helper classes mới ----
+    private val editManager = PdfEditManager()
+    private val touchHelper = TouchInteractionHelper()
+    private val renderer = PdfEditRenderer()
 
     // Cache cho trang PDF sạch hiện tại để tăng hiệu năng di chuyển mượt mà
     private var basePageBitmap: Bitmap? = null
     private var displayBitmap: Bitmap? = null
     private var displayCanvas: android.graphics.Canvas? = null
 
-    private var imageInsertX = 0f
-    private var imageInsertY = 0f
-
-    private fun getLocalPoint(pdfX: Float, pdfY: Float, edit: ResizableEdit): android.graphics.PointF {
-        val cx = edit.x + edit.width / 2f
-        val cy = edit.y + edit.height / 2f
-        val angleRad = Math.toRadians((-edit.rotation).toDouble())
-        val cos = Math.cos(angleRad)
-        val sin = Math.sin(angleRad)
-        val dx = pdfX - cx
-        val dy = pdfY - cy
-        val rx = dx * cos - dy * sin + cx
-        val ry = dx * sin + dy * cos + cy
-        return android.graphics.PointF(rx.toFloat(), ry.toFloat())
-    }
+    private var activeInlineEditText: EditText? = null
 
     private val selectImageLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -130,14 +107,14 @@ class PdfViewerActivity : AppCompatActivity() {
                         val ratio = bitmap.width.toFloat() / bitmap.height.toFloat()
                         val w = 150f
                         val h = w / ratio
-                        pendingEdits.add(
-                            PdfEdit.ImageEdit(
-                                bitmap,
-                                imageInsertX - w / 2,
-                                imageInsertY - h / 2,
-                                w,
-                                h
-                            )
+                        addFloatingOverlayView(
+                            bitmap = bitmap,
+                            pdfX = editManager.imageInsertX - w / 2,
+                            pdfY = editManager.imageInsertY - h / 2,
+                            pdfWidth = w,
+                            pdfHeight = h,
+                            rotationAngle = 0f,
+                            isSignature = false
                         )
                         renderPageWithEdits()
                     } else {
@@ -158,7 +135,7 @@ class PdfViewerActivity : AppCompatActivity() {
             try {
                 contentResolver.openInputStream(imageUri)?.use { inputStream ->
                     val bitmap = BitmapFactory.decodeStream(inputStream)
-                    val rect = targetReplaceRect
+                    val rect = editManager.targetReplaceRect
                     if (bitmap != null && rect != null) {
                         val minX = minOf(rect.left, rect.right)
                         val minY = minOf(rect.top, rect.bottom)
@@ -166,25 +143,23 @@ class PdfViewerActivity : AppCompatActivity() {
                         val h = Math.abs(rect.height())
 
                         // 1. Vẽ đè hình chữ nhật trắng (Whiteout) che ảnh cũ
-                        pendingEdits.add(
-                            PdfEdit.WhiteoutTextEdit(
-                                text = "", // chuỗi trống để chỉ vẽ ô trắng che
-                                x = minX,
-                                y = minY,
-                                width = w,
-                                fontSize = h
-                            )
+                        editManager.addWhiteoutEdit(
+                            text = "", // chuỗi trống để chỉ vẽ ô trắng che
+                            x = minX,
+                            y = minY,
+                            width = w,
+                            fontSize = h
                         )
 
                         // 2. Vẽ hình ảnh mới đè lên đúng tọa độ và kích thước đó
-                        pendingEdits.add(
-                            PdfEdit.ImageEdit(
-                                bitmap = bitmap,
-                                x = minX,
-                                y = minY,
-                                width = w,
-                                height = h
-                            )
+                        addFloatingOverlayView(
+                            bitmap = bitmap,
+                            pdfX = minX,
+                            pdfY = minY,
+                            pdfWidth = w,
+                            pdfHeight = h,
+                            rotationAngle = 0f,
+                            isSignature = false
                         )
                         renderPageWithEdits()
                         Toast.makeText(this, "Đã thay thế hình ảnh thành công!", Toast.LENGTH_SHORT).show()
@@ -197,28 +172,9 @@ class PdfViewerActivity : AppCompatActivity() {
                 Toast.makeText(this, "Lỗi thay ảnh: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
-        targetReplaceRect = null
+        editManager.targetReplaceRect = null
     }
 
-    private var isHighlightMode = false
-    private var highlightStartX = 0f
-    private var highlightStartY = 0f
-    private var activeHighlightEdit: PdfEdit.HighlightEdit? = null
-
-    private var isLineEffectMode = false
-    private var activeLineEffectType = 1 // 1: Underline, 2: Strikethrough
-    private var selectionStartX = 0f
-    private var selectionStartY = 0f
-    private var selectionRect: RectF? = null
-
-    private var isEditTextMode = false
-    private var activeInlineEditText: EditText? = null
-    private var activeInlineBlock: TextBlock? = null
-
-    private var isReplaceImageMode = false
-    private var isSignatureMode = false
-    private val detectedImageRects = mutableListOf<RectF>()
-    private var targetReplaceRect: RectF? = null
     private lateinit var btnMenuTools: Button
     private lateinit var btnCancelEdits: Button
 
@@ -245,7 +201,8 @@ class PdfViewerActivity : AppCompatActivity() {
         btnCancelEdits = findViewById(R.id.btnCancelEdits)
 
         btnCancelEdits.setOnClickListener {
-            if (pendingEdits.isEmpty()) {
+            val overlayEdits = collectOverlayEdits()
+            if (editManager.pendingEdits.isEmpty() && overlayEdits.isEmpty()) {
                 Toast.makeText(this, "Không có chỉnh sửa nào để hủy!", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
@@ -254,7 +211,8 @@ class PdfViewerActivity : AppCompatActivity() {
                 .setTitle("Xác nhận hủy")
                 .setMessage("Bạn có chắc chắn muốn hủy tất cả các thay đổi chưa lưu?")
                 .setPositiveButton("Hủy tất cả") { _, _ ->
-                    pendingEdits.clear()
+                    editManager.clearEdits()
+                    clearFloatingOverlayViews()
                     deactivateAllModes()
                     renderPageWithEdits()
                     Toast.makeText(this, "Đã hủy tất cả chỉnh sửa!", Toast.LENGTH_SHORT).show()
@@ -279,27 +237,27 @@ class PdfViewerActivity : AppCompatActivity() {
                     deactivateAllModes()
                     when (which) {
                         0 -> {
-                            isEditTextMode = true
+                            editManager.isEditTextMode = true
                             btnMenuTools.text = "Đang sửa"
                             btnMenuTools.backgroundTintList = android.content.res.ColorStateList.valueOf("#2563EB".toColorInt())
                             Toast.makeText(this, "Chế độ sửa chữ: Chọn khung nét đứt màu xanh để sửa trực tiếp", Toast.LENGTH_SHORT).show()
                         }
                         1 -> {
-                            isHighlightMode = true
+                            editManager.isHighlightMode = true
                             btnMenuTools.text = "Đang tô"
                             btnMenuTools.backgroundTintList = android.content.res.ColorStateList.valueOf("#F59E0B".toColorInt())
                             Toast.makeText(this, "Chế độ tô sáng: Vuốt ngón tay ngang để vẽ highlight", Toast.LENGTH_SHORT).show()
                         }
                         2 -> {
-                            isLineEffectMode = true
-                            activeLineEffectType = 1
+                            editManager.isLineEffectMode = true
+                            editManager.activeLineEffectType = 1
                             btnMenuTools.text = "Gạch dưới"
                             btnMenuTools.backgroundTintList = android.content.res.ColorStateList.valueOf("#EF4444".toColorInt())
                             Toast.makeText(this, "Chế độ gạch dưới: Vuốt để quét vùng chọn text cần gạch dưới", Toast.LENGTH_SHORT).show()
                         }
                         3 -> {
-                            isLineEffectMode = true
-                            activeLineEffectType = 2
+                            editManager.isLineEffectMode = true
+                            editManager.activeLineEffectType = 2
                             btnMenuTools.text = "Gạch ngang"
                             btnMenuTools.backgroundTintList = android.content.res.ColorStateList.valueOf("#EF4444".toColorInt())
                             Toast.makeText(this, "Chế độ gạch ngang: Vuốt để quét vùng chọn text cần gạch ngang", Toast.LENGTH_SHORT).show()
@@ -315,19 +273,25 @@ class PdfViewerActivity : AppCompatActivity() {
                             }
                         }
                         5 -> {
-                            isReplaceImageMode = true
+                            editManager.isReplaceImageMode = true
                             btnMenuTools.text = "Thay ảnh"
                             btnMenuTools.backgroundTintList = android.content.res.ColorStateList.valueOf("#F97316".toColorInt())
 
-                            // Quét hình ảnh trên trang hiện tại ngay lập tức
-                            detectedImageRects.clear()
-                            pdfFilePath?.let { path ->
-                                detectedImageRects.addAll(PdfEditorHelper.detectImageRects(path, currentPageIndex))
-                            }
-                            if (detectedImageRects.isNotEmpty()) {
-                                Toast.makeText(this, "Đã quét và tìm thấy ${detectedImageRects.size} ảnh. Chạm vào ảnh khoanh màu cam để thay thế.", Toast.LENGTH_LONG).show()
-                            } else {
-                                Toast.makeText(this, "Không tìm thấy hình ảnh nào trên trang này! Chạm vào trang để chèn ảnh mới.", Toast.LENGTH_LONG).show()
+                            // Quét hình ảnh trên trang hiện tại bất đồng bộ
+                            lifecycleScope.launch {
+                                editManager.detectedImageRects.clear()
+                                val rects = withContext(Dispatchers.IO) {
+                                    pdfFilePath?.let { path ->
+                                        PdfEditorHelper.detectImageRects(path, currentPageIndex)
+                                    } ?: emptyList()
+                                }
+                                editManager.detectedImageRects.addAll(rects)
+                                if (editManager.detectedImageRects.isNotEmpty()) {
+                                    Toast.makeText(this@PdfViewerActivity, "Đã quét và tìm thấy ${editManager.detectedImageRects.size} ảnh. Chạm vào ảnh khoanh màu cam để thay thế.", Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(this@PdfViewerActivity, "Không tìm thấy hình ảnh nào trên trang này! Chạm vào trang để chèn ảnh mới.", Toast.LENGTH_LONG).show()
+                                }
+                                renderPageWithEdits()
                             }
                         }
                         6 -> {
@@ -355,7 +319,8 @@ class PdfViewerActivity : AppCompatActivity() {
         setupTouchInteraction()
 
         btnBack.setOnClickListener {
-            if (pendingEdits.isNotEmpty()) {
+            val overlayEdits = collectOverlayEdits()
+            if (editManager.pendingEdits.isNotEmpty() || overlayEdits.isNotEmpty()) {
                 AlertDialog.Builder(this)
                     .setTitle("Cảnh báo")
                     .setMessage("Bạn có các chỉnh sửa chưa lưu. Bạn có chắc chắn muốn thoát?")
@@ -372,7 +337,8 @@ class PdfViewerActivity : AppCompatActivity() {
         }
 
         btnPrevPage.setOnClickListener {
-            if (pendingEdits.isNotEmpty()) {
+            val overlayEdits = collectOverlayEdits()
+            if (editManager.pendingEdits.isNotEmpty() || overlayEdits.isNotEmpty()) {
                 Toast.makeText(this, "Vui lòng lưu chỉnh sửa trước khi chuyển trang!", Toast.LENGTH_SHORT).show()
             } else {
                 showPage(currentPageIndex - 1)
@@ -380,7 +346,8 @@ class PdfViewerActivity : AppCompatActivity() {
         }
 
         btnNextPage.setOnClickListener {
-            if (pendingEdits.isNotEmpty()) {
+            val overlayEdits = collectOverlayEdits()
+            if (editManager.pendingEdits.isNotEmpty() || overlayEdits.isNotEmpty()) {
                 Toast.makeText(this, "Vui lòng lưu chỉnh sửa trước khi chuyển trang!", Toast.LENGTH_SHORT).show()
             } else {
                 showPage(currentPageIndex + 1)
@@ -418,9 +385,6 @@ class PdfViewerActivity : AppCompatActivity() {
             }
 
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                val xTouch = e.x
-                val yTouch = e.y
-
                 val page = currentPage ?: return false
                 val wView = ivPdfPage.width.toFloat()
                 val hView = ivPdfPage.height.toFloat()
@@ -429,22 +393,12 @@ class PdfViewerActivity : AppCompatActivity() {
                 val wPdf = page.width.toFloat()
                 val hPdf = page.height.toFloat()
 
-                // Chuyển đổi điểm chạm sang tọa độ PDF
-                val pdfX = xTouch * (wPdf / wView)
-                val pdfY = hPdf - (yTouch * (hPdf / hView))
+                val pdfPoint = touchHelper.viewToPdf(e.x, e.y, wView, hView, wPdf, hPdf)
+                val pdfX = pdfPoint.x
+                val pdfY = pdfPoint.y
 
-                if (isReplaceImageMode) {
-                    var clickedImageRect: RectF? = null
-                    for (rect in detectedImageRects) {
-                        val left = minOf(rect.left, rect.right)
-                        val right = maxOf(rect.left, rect.right)
-                        val bottom = minOf(rect.top, rect.bottom)
-                        val top = maxOf(rect.top, rect.bottom)
-                        if (pdfX >= left && pdfX <= right && pdfY >= bottom && pdfY <= top) {
-                            clickedImageRect = rect
-                            break
-                        }
-                    }
+                if (editManager.isReplaceImageMode) {
+                    val clickedImageRect = touchHelper.findImageRectAt(pdfX, pdfY, editManager.detectedImageRects)
 
                     if (clickedImageRect != null) {
                         val options = arrayOf("Thay thế hình ảnh này", "Chèn ảnh mới tại đây", "Hủy")
@@ -453,29 +407,26 @@ class PdfViewerActivity : AppCompatActivity() {
                             .setItems(options) { _, which ->
                                 when (which) {
                                     0 -> {
-                                        targetReplaceRect = clickedImageRect
+                                        editManager.targetReplaceRect = clickedImageRect
                                         selectReplaceImageLauncher.launch("image/*")
                                     }
                                     1 -> {
-                                        imageInsertX = pdfX
-                                        imageInsertY = pdfY
+                                        editManager.imageInsertX = pdfX
+                                        editManager.imageInsertY = pdfY
                                         selectImageLauncher.launch("image/*")
                                     }
                                 }
                             }
                             .show()
                     }
-                } else if (isEditTextMode) {
-                    // Kiểm tra chạm trúng khối text
-                    val block = findDetectedTextBlockAt(pdfX, pdfY)
+                } else if (editManager.isEditTextMode) {
+                    val block = touchHelper.findDetectedTextBlockAt(pdfX, pdfY, editManager.detectedTextBlocks)
                     if (block != null) {
-                        // Sửa trực tiếp trên trang thay vì hiện Dialog!
                         showInlineEditText(block, pdfX, pdfY, wView, hView, wPdf, hPdf)
                     } else {
-                        // Nếu gõ bên ngoài, đóng và lưu EditText đang mở
                         closeAndSaveInlineEditText()
                     }
-                } else if (isSignatureMode) {
+                } else if (editManager.isSignatureMode) {
                     showSignatureDialogOrList(pdfX, pdfY)
                 }
                 return true
@@ -484,13 +435,11 @@ class PdfViewerActivity : AppCompatActivity() {
 
         ivPdfPage.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
-                // Nếu chạm vào trang, kiểm tra và đóng/lưu inline editText nếu có
                 activeInlineEditText?.let { et ->
                     val location = IntArray(2)
                     et.getLocationOnScreen(location)
                     val x = event.rawX
                     val y = event.rawY
-                    // Chỉ đóng nếu điểm chạm nằm ngoài vùng của EditText hiện tại
                     if (x < location[0] || x > location[0] + et.width || y < location[1] || y > location[1] + et.height) {
                         closeAndSaveInlineEditText()
                     }
@@ -500,9 +449,6 @@ class PdfViewerActivity : AppCompatActivity() {
             val page = currentPage
             if (page == null) return@setOnTouchListener false
 
-            val xTouch = event.x
-            val yTouch = event.y
-
             val wView = ivPdfPage.width.toFloat()
             val hView = ivPdfPage.height.toFloat()
 
@@ -510,104 +456,46 @@ class PdfViewerActivity : AppCompatActivity() {
                 val wPdf = page.width.toFloat()
                 val hPdf = page.height.toFloat()
 
-                // Chuyển đổi điểm chạm Android -> PDF
-                val pdfX = xTouch * (wPdf / wView)
-                val pdfY = hPdf - (yTouch * (hPdf / hView))
+                val pdfPoint = touchHelper.viewToPdf(event.x, event.y, wView, hView, wPdf, hPdf)
+                val pdfX = pdfPoint.x
+                val pdfY = pdfPoint.y
 
-                if (isHighlightMode) {
+                if (editManager.isHighlightMode) {
                     when (event.action) {
                         MotionEvent.ACTION_DOWN -> {
-                            highlightStartX = pdfX
-                            highlightStartY = pdfY
-                            // Tạo highlight mới với chiều cao mặc định 16f
-                            val newHighlight = PdfEdit.HighlightEdit(pdfX, pdfY, 0f, 16f)
-                            activeHighlightEdit = newHighlight
-                            pendingEdits.add(newHighlight)
-                            // Khóa cuộn để vẽ mượt mà
+                            editManager.startHighlight(pdfX, pdfY)
                             ivPdfPage.parent?.requestDisallowInterceptTouchEvent(true)
                             return@setOnTouchListener true
                         }
                         MotionEvent.ACTION_MOVE -> {
-                            activeHighlightEdit?.let { edit ->
-                                val currentX = pdfX
-                                // Luôn tính chiều rộng và tọa độ x dương để vẽ chuẩn xác
-                                if (currentX >= highlightStartX) {
-                                    edit.x = highlightStartX
-                                    edit.width = currentX - highlightStartX
-                                } else {
-                                    edit.x = currentX
-                                    edit.width = highlightStartX - currentX
-                                }
-                                renderPageWithEdits()
-                            }
-                            return@setOnTouchListener true
-                        }
-                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                            activeHighlightEdit?.let { edit ->
-                                // Nếu người dùng chỉ chạm nhẹ mà không vuốt, xóa highlight thừa
-                                if (edit.width < 5f) {
-                                    pendingEdits.remove(edit)
-                                    renderPageWithEdits()
-                                }
-                            }
-                            activeHighlightEdit = null
-                            ivPdfPage.parent?.requestDisallowInterceptTouchEvent(false)
-                            return@setOnTouchListener true
-                        }
-                    }
-                } else if (isLineEffectMode) {
-                    when (event.action) {
-                        MotionEvent.ACTION_DOWN -> {
-                            selectionStartX = pdfX
-                            selectionStartY = pdfY
-                            selectionRect = RectF(pdfX, pdfY, pdfX, pdfY)
-                            // Khóa cuộn màn hình
-                            ivPdfPage.parent?.requestDisallowInterceptTouchEvent(true)
-                            return@setOnTouchListener true
-                        }
-                        MotionEvent.ACTION_MOVE -> {
-                            val currentX = pdfX
-                            val currentY = pdfY
-                            selectionRect = RectF(
-                                minOf(selectionStartX, currentX),
-                                minOf(selectionStartY, currentY),
-                                maxOf(selectionStartX, currentX),
-                                maxOf(selectionStartY, currentY)
-                            )
+                            editManager.updateHighlight(pdfX)
                             renderPageWithEdits()
                             return@setOnTouchListener true
                         }
                         MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                            selectionRect?.let { rect ->
-                                if (rect.width() > 3f || rect.height() > 3f) {
-                                    var count = 0
-                                    for (block in detectedTextBlocks) {
-                                        val blockLeft = block.x
-                                        val blockRight = block.x + block.width
-                                        val blockBottom = block.y - 4f
-                                        val blockTop = block.y + block.height
-
-                                        val isIntersect = !(blockRight < rect.left || blockLeft > rect.right ||
-                                                            blockTop < rect.top || blockBottom > rect.bottom)
-                                        if (isIntersect) {
-                                            pendingEdits.add(
-                                                PdfEdit.LineEffectEdit(
-                                                    effectType = activeLineEffectType,
-                                                    x = block.x,
-                                                    y = block.y,
-                                                    width = block.width,
-                                                    height = block.height
-                                                )
-                                            )
-                                            count++
-                                        }
-                                    }
-                                    if (count > 0) {
-                                        Toast.makeText(this, "Đã kẻ chữ $count dòng văn bản", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
+                            editManager.endHighlight()
+                            renderPageWithEdits()
+                            ivPdfPage.parent?.requestDisallowInterceptTouchEvent(false)
+                            return@setOnTouchListener true
+                        }
+                    }
+                } else if (editManager.isLineEffectMode) {
+                    when (event.action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            editManager.startSelection(pdfX, pdfY)
+                            ivPdfPage.parent?.requestDisallowInterceptTouchEvent(true)
+                            return@setOnTouchListener true
+                        }
+                        MotionEvent.ACTION_MOVE -> {
+                            editManager.updateSelection(pdfX, pdfY)
+                            renderPageWithEdits()
+                            return@setOnTouchListener true
+                        }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            val count = editManager.endSelectionAndApply()
+                            if (count > 0) {
+                                Toast.makeText(this, "Đã kẻ chữ $count dòng văn bản", Toast.LENGTH_SHORT).show()
                             }
-                            selectionRect = null
                             ivPdfPage.parent?.requestDisallowInterceptTouchEvent(false)
                             renderPageWithEdits()
                             return@setOnTouchListener true
@@ -616,128 +504,55 @@ class PdfViewerActivity : AppCompatActivity() {
                 } else {
                     when (event.action) {
                         MotionEvent.ACTION_DOWN -> {
-                            // 1. Kiểm tra xem có chạm trúng handle của SignatureEdit hoặc ImageEdit nào không
-                            var foundHandle = false
-                            for (i in pendingEdits.indices.reversed()) {
-                                val edit = pendingEdits[i]
-                                if (edit is ResizableEdit) {
-                                    val localPoint = getLocalPoint(pdfX, pdfY, edit)
-                                    val localX = localPoint.x
-                                    val localY = localPoint.y
-
-                                    // a. Xóa handle: top-left (edit.x, edit.y + edit.height)
-                                    val deleteX = edit.x
-                                    val deleteY = edit.y + edit.height
-                                    val distDelete = Math.hypot((localX - deleteX).toDouble(), (localY - deleteY).toDouble())
-                                    if (distDelete < 20.0) { // Bán kính nhận diện 20 points
-                                        pendingEdits.removeAt(i)
-                                        renderPageWithEdits()
-                                        foundHandle = true
-                                        break
-                                    }
-
-                                    // b. Xoay handle: top-middle (edit.x + edit.width / 2, edit.y + edit.height + 15)
-                                    val rotateX = edit.x + edit.width / 2f
-                                    val rotateY = edit.y + edit.height + 15f
-                                    val distRotate = Math.hypot((localX - rotateX).toDouble(), (localY - rotateY).toDouble())
-                                    if (distRotate < 20.0) {
-                                        isRotating = true
-                                        activeRotateEdit = edit
-                                        val cx = edit.x + edit.width / 2f
-                                        val cy = edit.y + edit.height / 2f
-                                        val dx = pdfX - cx
-                                        val dy = pdfY - cy
-                                        initialTouchAngle = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble()))
-                                        initialEditRotation = edit.rotation
-                                        foundHandle = true
-                                        ivPdfPage.parent?.requestDisallowInterceptTouchEvent(true)
-                                        break
-                                    }
-
-                                    // c. Co giãn handle: bottom-right (edit.x + edit.width, edit.y)
-                                    val resizeX = edit.x + edit.width
-                                    val resizeY = edit.y
-                                    val distResize = Math.hypot((localX - resizeX).toDouble(), (localY - resizeY).toDouble())
-                                    if (distResize < 20.0) {
-                                        isResizing = true
-                                        activeResizeEdit = edit
-                                        foundHandle = true
-                                        ivPdfPage.parent?.requestDisallowInterceptTouchEvent(true)
-                                        break
-                                    }
+                            // 1. Kiểm tra chạm trúng handle
+                            val handleResult = touchHelper.findHandleAt(pdfX, pdfY, editManager.pendingEdits)
+                            when (handleResult.type) {
+                                TouchInteractionHelper.HandleType.DELETE -> {
+                                    editManager.deleteEditAt(handleResult.editIndex)
+                                    renderPageWithEdits()
+                                    return@setOnTouchListener true
                                 }
+                                TouchInteractionHelper.HandleType.ROTATE -> {
+                                    editManager.startRotate(handleResult.edit!!, pdfX, pdfY)
+                                    ivPdfPage.parent?.requestDisallowInterceptTouchEvent(true)
+                                    return@setOnTouchListener true
+                                }
+                                TouchInteractionHelper.HandleType.RESIZE -> {
+                                    editManager.startResize(handleResult.edit!!)
+                                    ivPdfPage.parent?.requestDisallowInterceptTouchEvent(true)
+                                    return@setOnTouchListener true
+                                }
+                                TouchInteractionHelper.HandleType.NONE -> { /* tiếp tục kiểm tra drag */ }
                             }
 
-                            if (foundHandle) {
-                                return@setOnTouchListener true
-                            }
-
-                            // 2. Nếu không chạm trúng handle, kiểm tra chạm trúng phần tử để kéo thả di chuyển
-                            val edit = findEditAt(pdfX, pdfY)
+                            // 2. Kiểm tra chạm trúng phần tử để kéo thả
+                            val edit = touchHelper.findEditAt(pdfX, pdfY, editManager.pendingEdits)
                             if (edit != null) {
-                                activeDragEdit = edit
-                                dragOffsetX = pdfX - edit.x
-                                dragOffsetY = pdfY - edit.y
-                                // Khóa cuộn màn hình của ScrollView cha để tập trung kéo thả phần tử
+                                editManager.startDrag(edit, pdfX, pdfY)
                                 ivPdfPage.parent?.requestDisallowInterceptTouchEvent(true)
                                 return@setOnTouchListener true
                             }
                         }
                         MotionEvent.ACTION_MOVE -> {
-                            // Xử lý xoay chữ ký
-                            if (isRotating && activeRotateEdit != null) {
-                                activeRotateEdit?.let { edit ->
-                                    val cx = edit.x + edit.width / 2f
-                                    val cy = edit.y + edit.height / 2f
-                                    val dx = pdfX - cx
-                                    val dy = pdfY - cy
-                                    val currentAngle = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble()))
-                                    val diff = (initialTouchAngle - currentAngle).toFloat()
-                                    edit.rotation = (initialEditRotation + diff) % 360f
-                                    renderPageWithEdits()
-                                }
+                            if (editManager.isRotating) {
+                                editManager.updateRotate(pdfX, pdfY)
+                                renderPageWithEdits()
                                 return@setOnTouchListener true
                             }
-
-                            // Xử lý co giãn chữ ký
-                            if (isResizing && activeResizeEdit != null) {
-                                activeResizeEdit?.let { edit ->
-                                    val localPoint = getLocalPoint(pdfX, pdfY, edit)
-                                    val ratio = edit.bitmap.width.toFloat() / edit.bitmap.height.toFloat()
-                                    val newWidth = (localPoint.x - edit.x).coerceAtLeast(30f) // Chiều rộng tối thiểu 30pt
-                                    edit.width = newWidth
-                                    edit.height = newWidth / ratio
-                                    renderPageWithEdits()
-                                }
+                            if (editManager.isResizing) {
+                                editManager.updateResize(pdfX, pdfY, touchHelper)
+                                renderPageWithEdits()
                                 return@setOnTouchListener true
                             }
-
-                            // Xử lý kéo thả di chuyển
-                            activeDragEdit?.let { edit ->
-                                // Tính toán tọa độ kéo mới
-                                var newX = pdfX - dragOffsetX
-                                var newY = pdfY - dragOffsetY
-
-                                // Giới hạn biên để không bị kéo ra ngoài trang PDF
-                                newX = newX.coerceIn(0f, wPdf)
-                                newY = newY.coerceIn(0f, hPdf)
-
-                                edit.x = newX
-                                edit.y = newY
-
-                                // Cập nhật bản vẽ xem trước di chuyển theo ngón tay (real-time)
+                            if (editManager.activeDragEdit != null) {
+                                editManager.updateDrag(pdfX, pdfY, wPdf, hPdf)
                                 renderPageWithEdits()
                                 return@setOnTouchListener true
                             }
                         }
                         MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                            if (isResizing || isRotating || activeDragEdit != null) {
-                                isResizing = false
-                                isRotating = false
-                                activeResizeEdit = null
-                                activeRotateEdit = null
-                                activeDragEdit = null
-                                // Mở khóa cuộn màn hình của ScrollView
+                            if (editManager.isInteracting) {
+                                editManager.releaseInteraction()
                                 ivPdfPage.parent?.requestDisallowInterceptTouchEvent(false)
                                 return@setOnTouchListener true
                             }
@@ -747,70 +562,12 @@ class PdfViewerActivity : AppCompatActivity() {
             }
 
             // Nếu không chạm trúng phần tử để kéo và không ở chế độ Highlight/LineEffect, truyền sự kiện cho GestureDetector xử lý tap nhẹ
-            if (!isHighlightMode && !isLineEffectMode) {
+            if (!editManager.isHighlightMode && !editManager.isLineEffectMode) {
                 gestureDetector.onTouchEvent(event)
             } else {
                 false
             }
         }
-    }
-
-    // Tìm xem điểm chạm của người dùng có trúng vào phần tử nào trong danh sách edits tạm hay không
-    private fun findEditAt(pdfX: Float, pdfY: Float): PdfEdit? {
-        // Duyệt từ cuối lên đầu để ưu tiên phần tử nằm đè lên trên (vừa tạo sau)
-        for (i in pendingEdits.indices.reversed()) {
-            when (val edit = pendingEdits[i]) {
-                is PdfEdit.TextEdit -> {
-                    val width = edit.text.length * 8f // ước lượng chiều rộng text
-                    val height = 16f
-                    if (pdfX >= edit.x && pdfX <= edit.x + width && pdfY >= edit.y - 12f && pdfY <= edit.y + 4f) {
-                        return edit
-                    }
-                }
-                is PdfEdit.WhiteoutTextEdit -> {
-                    val width = edit.width
-                    val height = 16f
-                    if (pdfX >= edit.x && pdfX <= edit.x + width && pdfY >= edit.y - 12f && pdfY <= edit.y + 4f) {
-                        return edit
-                    }
-                }
-                is PdfEdit.SignatureEdit -> {
-                    val localPoint = getLocalPoint(pdfX, pdfY, edit)
-                    val localX = localPoint.x
-                    val localY = localPoint.y
-                    val padding = 20f
-                    if (localX >= edit.x - padding && localX <= edit.x + edit.width + padding &&
-                        localY >= edit.y - padding && localY <= edit.y + edit.height + padding) {
-                        return edit
-                    }
-                }
-                is PdfEdit.ImageEdit -> {
-                    val localPoint = getLocalPoint(pdfX, pdfY, edit)
-                    val localX = localPoint.x
-                    val localY = localPoint.y
-                    val padding = 20f
-                    if (localX >= edit.x - padding && localX <= edit.x + edit.width + padding &&
-                        localY >= edit.y - padding && localY <= edit.y + edit.height + padding) {
-                        return edit
-                    }
-                }
-                is PdfEdit.HighlightEdit -> {
-                    val width = edit.width
-                    val height = edit.height
-                    if (pdfX >= edit.x && pdfX <= edit.x + width && pdfY >= edit.y - 12f && pdfY <= edit.y + 4f) {
-                        return edit
-                    }
-                }
-                is PdfEdit.LineEffectEdit -> {
-                    val width = edit.width
-                    val midY = if (edit.effectType == 1) edit.y - 2f else edit.y + edit.height / 2
-                    if (pdfX >= edit.x && pdfX <= edit.x + width && pdfY >= midY - 6f && pdfY <= midY + 6f) {
-                        return edit
-                    }
-                }
-            }
-        }
-        return null
     }
 
     // Hiển thị Menu lựa chọn khi người dùng chạm vào PDF
@@ -824,9 +581,9 @@ class PdfViewerActivity : AppCompatActivity() {
         val wPdf = page.width.toFloat()
         val hPdf = page.height.toFloat()
 
-        // Chuyển đổi tọa độ View của Android thành tọa độ PDF (points) thực tế
-        val pdfX = xTouch * (wPdf / wView)
-        val pdfY = hPdf - (yTouch * (hPdf / hView))
+        val pdfPoint = touchHelper.viewToPdf(xTouch, yTouch, wView, hView, wPdf, hPdf)
+        val pdfX = pdfPoint.x
+        val pdfY = pdfPoint.y
 
         val options = arrayOf("Thêm chữ mới tại đây", "Ký tên tại đây", "Xóa & Sửa chữ tại đây", "Tô sáng (Highlight) tại đây", "Chèn/Thay ảnh tại đây")
         AlertDialog.Builder(this)
@@ -838,8 +595,8 @@ class PdfViewerActivity : AppCompatActivity() {
                     2 -> showWhiteoutEditDialog(pdfX, pdfY)
                     3 -> showHighlightDialog(pdfX, pdfY)
                     4 -> {
-                        imageInsertX = pdfX
-                        imageInsertY = pdfY
+                        editManager.imageInsertX = pdfX
+                        editManager.imageInsertY = pdfY
                         selectImageLauncher.launch("image/*")
                     }
                 }
@@ -862,7 +619,7 @@ class PdfViewerActivity : AppCompatActivity() {
             .setPositiveButton("Xác nhận") { _, _ ->
                 val widthStr = input.text.toString().trim()
                 val width = widthStr.toFloatOrNull() ?: 150f
-                pendingEdits.add(PdfEdit.HighlightEdit(pdfX, pdfY, width, 16f))
+                editManager.addHighlightEdit(pdfX, pdfY, width)
                 renderPageWithEdits()
             }
             .setNegativeButton("Hủy", null)
@@ -887,7 +644,7 @@ class PdfViewerActivity : AppCompatActivity() {
         btnTextConfirm.setOnClickListener {
             val text = etDialogText.text.toString().trim()
             if (text.isNotEmpty()) {
-                pendingEdits.add(PdfEdit.TextEdit(text, pdfX, pdfY))
+                editManager.addTextEdit(text, pdfX, pdfY)
                 renderPageWithEdits()
                 alertDialog.dismiss()
             } else {
@@ -951,16 +708,13 @@ class PdfViewerActivity : AppCompatActivity() {
             if (!dialogSignatureView.isSignatureEmpty()) {
                 val bitmap = dialogSignatureView.getSignatureBitmap()
                 if (bitmap != null) {
-                    val w = 140f
-                    val h = 70f
-
                     // Nếu người dùng chọn lưu chữ ký
                     if (cbSaveSignature.isChecked) {
                         saveSignatureToStorage(bitmap)
                     }
 
                     // Căn giữa chữ ký tại điểm chạm (pdfX, pdfY)
-                    pendingEdits.add(PdfEdit.SignatureEdit(bitmap, pdfX - w / 2, pdfY - h / 2, w, h))
+                    addFloatingOverlayView(bitmap, pdfX, pdfY, 140f, 70f, 0f, isSignature = true)
                     renderPageWithEdits()
                     alertDialog.dismiss()
                 }
@@ -987,19 +741,23 @@ class PdfViewerActivity : AppCompatActivity() {
 
     // Lưu chữ ký vào bộ nhớ trong dưới dạng tệp PNG
     private fun saveSignatureToStorage(bitmap: Bitmap) {
-        try {
-            val dir = File(filesDir, "signatures")
-            if (!dir.exists()) dir.mkdirs()
-            val filename = "sig_${System.currentTimeMillis()}.png"
-            val file = File(dir, filename)
-            val out = FileOutputStream(file)
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-            out.flush()
-            out.close()
-            Toast.makeText(this, "Đã lưu chữ ký cục bộ!", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(this, "Lỗi khi lưu chữ ký: ${e.message}", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val dir = File(filesDir, "signatures")
+                    if (!dir.exists()) dir.mkdirs()
+                    val filename = "sig_${System.currentTimeMillis()}.png"
+                    val file = File(dir, filename)
+                    val out = FileOutputStream(file)
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    out.flush()
+                    out.close()
+                }
+                Toast.makeText(this@PdfViewerActivity, "Đã lưu chữ ký cục bộ!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(this@PdfViewerActivity, "Lỗi khi lưu chữ ký: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -1076,9 +834,7 @@ class PdfViewerActivity : AppCompatActivity() {
                 setPadding((8 * resources.displayMetrics.density).toInt(), 0, 0, 0)
                 setOnClickListener {
                     if (bmp != null) {
-                        val w = 140f
-                        val h = 70f
-                        pendingEdits.add(PdfEdit.SignatureEdit(bmp, pdfX - w / 2, pdfY - h / 2, w, h))
+                        addFloatingOverlayView(bmp, pdfX, pdfY, 140f, 70f, 0f, isSignature = true)
                         renderPageWithEdits()
                         Toast.makeText(this@PdfViewerActivity, "Đã chèn chữ ký đã lưu!", Toast.LENGTH_SHORT).show()
                         dialog.dismiss()
@@ -1151,7 +907,7 @@ class PdfViewerActivity : AppCompatActivity() {
             val width = widthStr.toFloatOrNull() ?: 150f
 
             if (text.isNotEmpty()) {
-                pendingEdits.add(PdfEdit.WhiteoutTextEdit(text, pdfX, pdfY, width, 14f, false, android.graphics.Color.BLACK))
+                editManager.addWhiteoutEdit(text, pdfX, pdfY, width, 14f, false, android.graphics.Color.BLACK)
                 renderPageWithEdits()
                 alertDialog.dismiss()
             } else {
@@ -1162,7 +918,7 @@ class PdfViewerActivity : AppCompatActivity() {
         alertDialog.show()
     }
 
-    // Render lại trang PDF kết hợp vẽ preview các edits tạm thời
+    // Render lại trang PDF kết hợp vẽ preview các edits tạm thời (ủy quyền cho PdfEditRenderer)
     private fun renderPageWithEdits() {
         val page = currentPage ?: return
         val baseBmp = basePageBitmap ?: return
@@ -1173,194 +929,23 @@ class PdfViewerActivity : AppCompatActivity() {
             val densityScale = resources.displayMetrics.density
             val scaleFactor = (densityScale * 1.5f).coerceAtLeast(1.0f)
 
-            // Sao chép trang PDF sạch từ cache vào display bitmap (tránh việc cấp phát bộ nhớ mới gây lag GC)
-            canvas.drawBitmap(baseBmp, 0f, 0f, null)
-
-            // Cấu hình bút vẽ chữ mới (màu đỏ để dễ phân biệt)
-            val textPaint = android.graphics.Paint().apply {
-                color = android.graphics.Color.RED
-                textSize = 14f * scaleFactor
-                isAntiAlias = true
-            }
-
-            // Bút xóa (hình chữ nhật màu trắng che text cũ)
-            val whitePaint = android.graphics.Paint().apply {
-                color = android.graphics.Color.WHITE
-                style = android.graphics.Paint.Style.FILL
-            }
-
-            // Bút vẽ chữ thay thế (màu đen cho giống text gốc)
-            val blackTextPaint = android.graphics.Paint().apply {
-                color = android.graphics.Color.BLACK
-                textSize = 14f * scaleFactor
-                isAntiAlias = true
-            }
-
-            for (edit in pendingEdits) {
-                when (edit) {
-                    is PdfEdit.TextEdit -> {
-                        val bmpX = edit.x * scaleFactor
-                        val bmpY = (page.height - edit.y) * scaleFactor
-                        canvas.drawText(edit.text, bmpX, bmpY, textPaint)
-                    }
-                    is PdfEdit.SignatureEdit -> {
-                        drawResizableEdit(edit, canvas, scaleFactor, page.height)
-                    }
-                    is PdfEdit.ImageEdit -> {
-                        drawResizableEdit(edit, canvas, scaleFactor, page.height)
-                    }
-                    is PdfEdit.WhiteoutTextEdit -> {
-                        val bmpX = edit.x * scaleFactor
-                        val bmpY = (page.height - edit.y) * scaleFactor
-
-                        // Che đi vùng chữ cũ bằng ô màu trắng
-                        val whiteWidth = edit.width * scaleFactor
-                        val whiteHeight = edit.fontSize * 1.2f * scaleFactor
-
-                        canvas.drawRect(
-                            bmpX,
-                            bmpY - whiteHeight + 2f * scaleFactor,
-                            bmpX + whiteWidth,
-                            bmpY + 4f * scaleFactor,
-                            whitePaint
-                        )
-
-                        // Vẽ chữ thay thế đè lên ô trắng theo đúng màu sắc, cỡ chữ và kiểu chữ
-                        val tempPaint = android.graphics.Paint(blackTextPaint).apply {
-                            color = edit.textColor
-                            textSize = edit.fontSize * scaleFactor
-                            if (edit.isBold) {
-                                isFakeBoldText = true
-                            }
-                        }
-                        canvas.drawText(edit.text, bmpX, bmpY, tempPaint)
-                    }
-                    is PdfEdit.HighlightEdit -> {
-                        val bmpX = edit.x * scaleFactor
-                        val bmpY = (page.height - edit.y) * scaleFactor
-
-                        val highlightWidth = edit.width * scaleFactor
-                        val highlightHeight = edit.height * scaleFactor
-
-                        val highlightPaint = android.graphics.Paint().apply {
-                            color = android.graphics.Color.argb(100, 255, 255, 0) // Màu vàng bán trong suốt
-                            style = android.graphics.Paint.Style.FILL
-                        }
-
-                        canvas.drawRect(
-                            bmpX,
-                            bmpY - highlightHeight + 2f,
-                            bmpX + highlightWidth,
-                            bmpY + 4f,
-                            highlightPaint
-                        )
-                    }
-                    is PdfEdit.LineEffectEdit -> {
-                        val bmpX = edit.x * scaleFactor
-                        val bmpY = (page.height - edit.y) * scaleFactor
-                        val bmpWidth = edit.width * scaleFactor
-                        val bmpHeight = edit.height * scaleFactor
-
-                        val linePaint = android.graphics.Paint().apply {
-                            color = android.graphics.Color.RED
-                            strokeWidth = 1.5f * scaleFactor
-                            style = android.graphics.Paint.Style.STROKE
-                            isAntiAlias = true
-                        }
-
-                        if (edit.effectType == 1) {
-                            // Underline: dưới baseline 2dp
-                            val lineY = bmpY + 2f * scaleFactor
-                            canvas.drawLine(bmpX, lineY, bmpX + bmpWidth, lineY, linePaint)
-                        } else {
-                            // Strikethrough: ở giữa chữ
-                            val lineY = bmpY - bmpHeight / 2
-                            canvas.drawLine(bmpX, lineY, bmpX + bmpWidth, lineY, linePaint)
-                        }
-                    }
-                }
-            }
-
-            // Vẽ các khung văn bản detect được dưới dạng nét đứt mờ (chỉ vẽ khi bật chế độ Edit Mode)
-            if (isEditTextMode) {
-                val detectFramePaint = android.graphics.Paint().apply {
-                    color = "#3B82F6".toColorInt() // màu xanh dương đẹp
-                    style = android.graphics.Paint.Style.STROKE
-                    strokeWidth = 1f * scaleFactor
-                    pathEffect = android.graphics.DashPathEffect(floatArrayOf(6f * scaleFactor, 4f * scaleFactor), 0f)
-                }
-
-                for (block in detectedTextBlocks) {
-                    val bmpX = block.x * scaleFactor
-                    val bmpY = (page.height - block.y) * scaleFactor
-                    val blockWidth = block.width * scaleFactor
-                    val blockHeight = block.height * scaleFactor
-
-                    canvas.drawRect(
-                        bmpX - 2f * scaleFactor,
-                        bmpY - blockHeight + 2f * scaleFactor,
-                        bmpX + blockWidth + 2f * scaleFactor,
-                        bmpY + 4f * scaleFactor,
-                        detectFramePaint
-                    )
-                }
-            }
-
-            // Vẽ khoanh vùng ảnh (khi bật chế độ thay ảnh)
-            if (isReplaceImageMode) {
-                val imagePaint = android.graphics.Paint().apply {
-                    color = "#F97316".toColorInt() // màu cam
-                    style = android.graphics.Paint.Style.STROKE
-                    strokeWidth = 2f * scaleFactor
-                    pathEffect = android.graphics.DashPathEffect(floatArrayOf(8f * scaleFactor, 4f * scaleFactor), 0f)
-                    isAntiAlias = true
-                }
-                val fillPaint = android.graphics.Paint().apply {
-                    color = "#F97316".toColorInt()
-                    alpha = 40 // trong suốt
-                    style = android.graphics.Paint.Style.FILL
-                }
-                for (rect in detectedImageRects) {
-                    val minX = minOf(rect.left, rect.right)
-                    val maxX = maxOf(rect.left, rect.right)
-                    val minY = minOf(rect.top, rect.bottom)
-                    val maxY = maxOf(rect.top, rect.bottom)
-
-                    val bmpX = minX * scaleFactor
-                    val bmpY = (page.height - minY) * scaleFactor
-                    val bmpRight = maxX * scaleFactor
-                    val bmpTop = (page.height - maxY) * scaleFactor
-                    val drawRect = RectF(bmpX, bmpTop, bmpRight, bmpY)
-                    canvas.drawRect(drawRect, fillPaint)
-                    canvas.drawRect(drawRect, imagePaint)
-                }
-            }
-
-            // Vẽ khung quét nét đứt màu đỏ xem trước
-            val currentSelectionRect = selectionRect
-            if (isLineEffectMode && currentSelectionRect != null) {
-                val selPaint = android.graphics.Paint().apply {
-                    color = android.graphics.Color.RED
-                    style = android.graphics.Paint.Style.STROKE
-                    strokeWidth = 1.5f * scaleFactor
-                    pathEffect = android.graphics.DashPathEffect(floatArrayOf(8f * scaleFactor, 6f * scaleFactor), 0f)
-                }
-                val selFillPaint = android.graphics.Paint().apply {
-                    color = android.graphics.Color.argb(30, 239, 68, 68) // Đỏ nhạt mờ
-                    style = android.graphics.Paint.Style.FILL
-                }
-
-                val left = currentSelectionRect.left * scaleFactor
-                val right = currentSelectionRect.right * scaleFactor
-                val bottom = (page.height - currentSelectionRect.bottom) * scaleFactor
-                val top = (page.height - currentSelectionRect.top) * scaleFactor
-
-                canvas.drawRect(left, top, right, bottom, selFillPaint)
-                canvas.drawRect(left, top, right, bottom, selPaint)
-            }
+            renderer.renderEdits(
+                canvas = canvas,
+                baseBitmap = baseBmp,
+                scaleFactor = scaleFactor,
+                pageHeight = page.height,
+                edits = editManager.pendingEdits,
+                detectedTextBlocks = editManager.detectedTextBlocks,
+                isEditTextMode = editManager.isEditTextMode,
+                isReplaceImageMode = editManager.isReplaceImageMode,
+                detectedImageRects = editManager.detectedImageRects,
+                isLineEffectMode = editManager.isLineEffectMode,
+                selectionRect = editManager.selectionRect
+            )
 
             // Ép buộc làm mới ImageView để hiển thị những thay đổi trên bitmap dùng lại
-            if (ivPdfPage.drawable == null) {
+            val currentDrawable = ivPdfPage.drawable as? android.graphics.drawable.BitmapDrawable
+            if (currentDrawable == null || currentDrawable.bitmap != dispBmp) {
                 ivPdfPage.setImageBitmap(dispBmp)
             } else {
                 ivPdfPage.invalidate()
@@ -1372,115 +957,19 @@ class PdfViewerActivity : AppCompatActivity() {
         }
     }
 
-    private fun drawResizableEdit(
-        edit: ResizableEdit,
-        canvas: android.graphics.Canvas,
-        scaleFactor: Float,
-        pageHeight: Int
-    ) {
-        val bmpX = edit.x * scaleFactor
-        val bmpY = (pageHeight - edit.y) * scaleFactor
-
-        val sigWidth = edit.width * scaleFactor
-        val sigHeight = edit.height * scaleFactor
-
-        val destRect = RectF(
-            bmpX,
-            bmpY - sigHeight,
-            bmpX + sigWidth,
-            bmpY
-        )
-
-        val cx = bmpX + sigWidth / 2f
-        val cy = bmpY - sigHeight / 2f
-
-        canvas.save()
-        canvas.rotate(edit.rotation, cx, cy)
-
-        canvas.drawBitmap(edit.bitmap, null, destRect, null)
-
-        // Vẽ khung viền nét đứt màu xanh dương
-        val borderPaint = android.graphics.Paint().apply {
-            color = "#3B82F6".toColorInt()
-            style = android.graphics.Paint.Style.STROKE
-            strokeWidth = 1.5f * scaleFactor
-            pathEffect = android.graphics.DashPathEffect(floatArrayOf(8f * scaleFactor, 4f * scaleFactor), 0f)
-            isAntiAlias = true
-        }
-        canvas.drawRect(destRect, borderPaint)
-
-        // Bút vẽ viền handle màu trắng
-        val handleStrokePaint = android.graphics.Paint().apply {
-            color = android.graphics.Color.WHITE
-            style = android.graphics.Paint.Style.STROKE
-            strokeWidth = 1.5f * scaleFactor
-            isAntiAlias = true
-        }
-
-        val handleRadius = 7f * scaleFactor
-
-        // 1. Vẽ nút tròn xóa (Red) ở góc trên bên trái (bmpX, bmpY - sigHeight)
-        val deletePaint = android.graphics.Paint().apply {
-            color = android.graphics.Color.parseColor("#EF4444")
-            style = android.graphics.Paint.Style.FILL
-            isAntiAlias = true
-        }
-        canvas.drawCircle(bmpX, bmpY - sigHeight, handleRadius, deletePaint)
-        canvas.drawCircle(bmpX, bmpY - sigHeight, handleRadius, handleStrokePaint)
-
-        // Vẽ chữ 'X' nhỏ trong nút xóa
-        val xPaint = android.graphics.Paint().apply {
-            color = android.graphics.Color.WHITE
-            strokeWidth = 1.5f * scaleFactor
-            style = android.graphics.Paint.Style.STROKE
-            isAntiAlias = true
-        }
-        val xOffset = 2.5f * scaleFactor
-        canvas.drawLine(bmpX - xOffset, bmpY - sigHeight - xOffset, bmpX + xOffset, bmpY - sigHeight + xOffset, xPaint)
-        canvas.drawLine(bmpX + xOffset, bmpY - sigHeight - xOffset, bmpX - xOffset, bmpY - sigHeight + xOffset, xPaint)
-
-        // 2. Vẽ nút tròn xoay (Green) ở giữa phía trên (cx, bmpY - sigHeight - 12f * scaleFactor)
-        val rotateHandleY = bmpY - sigHeight - 12f * scaleFactor
-        val rotateLinePaint = android.graphics.Paint().apply {
-            color = "#3B82F6".toColorInt()
-            strokeWidth = 1.2f * scaleFactor
-            style = android.graphics.Paint.Style.STROKE
-            isAntiAlias = true
-        }
-        canvas.drawLine(cx, bmpY - sigHeight, cx, rotateHandleY, rotateLinePaint)
-
-        val rotatePaint = android.graphics.Paint().apply {
-            color = android.graphics.Color.parseColor("#10B981")
-            style = android.graphics.Paint.Style.FILL
-            isAntiAlias = true
-        }
-        canvas.drawCircle(cx, rotateHandleY, handleRadius, rotatePaint)
-        canvas.drawCircle(cx, rotateHandleY, handleRadius, handleStrokePaint)
-
-        // 3. Vẽ nút tròn co giãn (Blue) ở góc dưới bên phải (bmpX + sigWidth, bmpY)
-        val resizePaint = android.graphics.Paint().apply {
-            color = "#3B82F6".toColorInt()
-            style = android.graphics.Paint.Style.FILL
-            isAntiAlias = true
-        }
-        canvas.drawCircle(bmpX + sigWidth, bmpY, handleRadius, resizePaint)
-        canvas.drawCircle(bmpX + sigWidth, bmpY, handleRadius, handleStrokePaint)
-
-        canvas.restore()
-    }
-
     private fun showPage(index: Int) {
-        val renderer = pdfRenderer ?: return
+        val pdfRend = pdfRenderer ?: return
         if (index < 0 || index >= pageCount) return
 
         try {
             // Đóng và dọn dẹp inline edit đang mở trước khi chuyển trang
             closeAndSaveInlineEditText()
+            clearFloatingOverlayViews()
 
             currentPage?.close()
 
             currentPageIndex = index
-            val page = renderer.openPage(index)
+            val page = pdfRend.openPage(index)
             currentPage = page
 
             // Render trang sạch một lần duy nhất để lưu cache tối ưu hiệu năng
@@ -1488,26 +977,44 @@ class PdfViewerActivity : AppCompatActivity() {
             val scaleFactor = (densityScale * 1.5f).coerceAtLeast(1.0f)
             val w = (page.width * scaleFactor).toInt()
             val h = (page.height * scaleFactor).toInt()
-            basePageBitmap?.recycle()
-            val baseBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            page.render(baseBmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            basePageBitmap = baseBmp
+            // Tạo các bitmap mới trước
+            val newBaseBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            page.render(newBaseBmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
 
-            // Khởi tạo display bitmap và canvas dùng lại để tối ưu hóa hiệu năng vẽ, tránh cấp phát liên tục
-            displayBitmap?.recycle()
-            val dispBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            displayBitmap = dispBmp
-            displayCanvas = android.graphics.Canvas(dispBmp)
+            val newDispBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val newCanvas = android.graphics.Canvas(newDispBmp)
 
-            // Detect text blocks trên trang hiện tại để chuẩn bị cho việc chỉnh sửa
-            detectTextBlocks(index)
+            // Lưu trữ tạm thời các bitmap cũ để recycle sau
+            val oldBaseBmp = basePageBitmap
+            val oldDispBmp = displayBitmap
+
+            // Gán các biến thành viên mới
+            basePageBitmap = newBaseBmp
+            displayBitmap = newDispBmp
+            displayCanvas = newCanvas
+
+            // Vẽ lại trang kết hợp hiển thị các khung text nét đứt màu xanh mờ
+            renderPageWithEdits()
+
+            // Sau khi renderPageWithEdits đã set newDispBmp vào ivPdfPage,
+            // ta có thể an toàn giải phóng các bitmap cũ mà không sợ crash "trying to use a recycled bitmap"
+            oldBaseBmp?.recycle()
+            oldDispBmp?.recycle()
+
+            // Detect text blocks trên trang hiện tại bất đồng bộ
+            lifecycleScope.launch {
+                val blocks = withContext(Dispatchers.IO) {
+                    val filePath = pdfFilePath ?: return@withContext emptyList()
+                    PdfEditorHelper.detectTextBlocks(filePath, index)
+                }
+                editManager.detectedTextBlocks.clear()
+                editManager.detectedTextBlocks.addAll(blocks)
+                renderPageWithEdits()
+            }
 
             tvPageIndicator.text = "Trang ${index + 1} / $pageCount"
             btnPrevPage.isEnabled = index > 0
             btnNextPage.isEnabled = index < pageCount - 1
-
-            // Vẽ lại trang kết hợp hiển thị các khung text nét đứt màu xanh mờ
-            renderPageWithEdits()
 
         } catch (e: Exception) {
             e.printStackTrace()
@@ -1515,9 +1022,15 @@ class PdfViewerActivity : AppCompatActivity() {
         }
     }
 
-    // Áp dụng các thay đổi thực sự vào tệp PDF
+    // Áp dụng các thay đổi thực sự vào tệp PDF (bất đồng bộ)
     private fun saveEditsToFile() {
-        if (pendingEdits.isEmpty()) {
+        val overlayEdits = collectOverlayEdits()
+        val allEdits = mutableListOf<PdfEdit>().apply {
+            addAll(editManager.pendingEdits)
+            addAll(overlayEdits)
+        }
+
+        if (allEdits.isEmpty()) {
             Toast.makeText(this, "Không có thay đổi nào để lưu!", Toast.LENGTH_SHORT).show()
             return
         }
@@ -1528,6 +1041,10 @@ class PdfViewerActivity : AppCompatActivity() {
             return
         }
 
+        // Hiển thị trạng thái đang lưu
+        btnSaveEdits.isEnabled = false
+        btnSaveEdits.text = "Đang lưu..."
+
         try {
             // Đóng tất cả renderer để mở khóa file hệ thống hoàn toàn
             currentPage?.close()
@@ -1537,24 +1054,34 @@ class PdfViewerActivity : AppCompatActivity() {
             fileDescriptor?.close()
             fileDescriptor = null
 
-            val success = PdfEditorHelper.saveEdits(
-                this,
-                pdfFilePath!!,
-                pdfFileUri,
-                currentPageIndex,
-                pendingEdits
-            )
+            lifecycleScope.launch {
+                val success = withContext(Dispatchers.IO) {
+                    PdfEditorHelper.saveEdits(
+                        this@PdfViewerActivity,
+                        pdfFilePath!!,
+                        pdfFileUri,
+                        currentPageIndex,
+                        allEdits
+                    )
+                }
 
-            if (success) {
-                pendingEdits.clear()
-                setupPdfRenderer()
-                Toast.makeText(this, "Đã lưu chỉnh sửa vào PDF thành công!", Toast.LENGTH_SHORT).show()
-            } else {
-                setupPdfRenderer()
-                Toast.makeText(this, "Lỗi khi lưu PDF!", Toast.LENGTH_LONG).show()
+                btnSaveEdits.isEnabled = true
+                btnSaveEdits.text = "Lưu"
+
+                if (success) {
+                    editManager.clearEdits()
+                    clearFloatingOverlayViews()
+                    setupPdfRenderer()
+                    Toast.makeText(this@PdfViewerActivity, "Đã lưu chỉnh sửa vào PDF thành công!", Toast.LENGTH_SHORT).show()
+                } else {
+                    setupPdfRenderer()
+                    Toast.makeText(this@PdfViewerActivity, "Lỗi khi lưu PDF!", Toast.LENGTH_LONG).show()
+                }
             }
         } catch (e: Throwable) {
             e.printStackTrace()
+            btnSaveEdits.isEnabled = true
+            btnSaveEdits.text = "Lưu"
             Toast.makeText(this, "Lỗi khi lưu PDF: ${e.message}", Toast.LENGTH_LONG).show()
             setupPdfRenderer()
         }
@@ -1562,6 +1089,7 @@ class PdfViewerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         try {
+            ivPdfPage.setImageBitmap(null)
             currentPage?.close()
             pdfRenderer?.close()
             fileDescriptor?.close()
@@ -1588,11 +1116,10 @@ class PdfViewerActivity : AppCompatActivity() {
     ) {
         closeAndSaveInlineEditText()
 
-        activeInlineBlock = block
+        editManager.activeInlineBlock = block
 
         // Chuyển đổi tọa độ PDF sang tọa độ Pixel thực tế của View
-        val xView = block.x * (wView / wPdf)
-        val yView = (hPdf - block.y) * (hView / hPdf)
+        val viewPoint = touchHelper.pdfToView(block.x, block.y, wView, hView, wPdf, hPdf)
         val viewWidth = block.width * (wView / wPdf)
         val viewHeight = block.height * (hView / hPdf)
 
@@ -1616,8 +1143,8 @@ class PdfViewerActivity : AppCompatActivity() {
                 viewWidth.toInt() + 40,
                 viewHeight.toInt() + 10
             ).apply {
-                leftMargin = xView.toInt()
-                topMargin = (yView - viewHeight).toInt()
+                leftMargin = viewPoint.x.toInt()
+                topMargin = (viewPoint.y - viewHeight).toInt()
             }
             layoutParams = params
         }
@@ -1652,11 +1179,11 @@ class PdfViewerActivity : AppCompatActivity() {
     // Đóng và lưu nội dung đã gõ trực tiếp
     private fun closeAndSaveInlineEditText() {
         val et = activeInlineEditText ?: return
-        val block = activeInlineBlock ?: return
+        val block = editManager.activeInlineBlock ?: return
 
         // Giải phóng biến trạng thái ngay lập tức để tránh các cuộc gọi đệ quy đè lên nhau (Focus Loss)
         activeInlineEditText = null
-        activeInlineBlock = null
+        editManager.activeInlineBlock = null
 
         val newText = et.text.toString().trim()
         val container = findViewById<FrameLayout>(R.id.pdfViewContainer)
@@ -1667,42 +1194,118 @@ class PdfViewerActivity : AppCompatActivity() {
 
         // Ghi nhận thay đổi nếu nội dung thay đổi và không rỗng
         if (newText.isNotEmpty() && newText != block.text) {
-            pendingEdits.add(PdfEdit.WhiteoutTextEdit(newText, block.x, block.y, block.width, block.fontSize, block.isBold, block.textColor))
+            editManager.addWhiteoutEdit(newText, block.x, block.y, block.width, block.fontSize, block.isBold, block.textColor)
             renderPageWithEdits()
         }
 
         container?.removeView(et)
     }
 
-    // Tìm xem tọa độ chạm có trúng vào khối text được nhận diện nào không
-    private fun findDetectedTextBlockAt(pdfX: Float, pdfY: Float): TextBlock? {
-        val padding = 6f
-        for (block in detectedTextBlocks) {
-            if (pdfX >= block.x - padding && pdfX <= block.x + block.width + padding &&
-                pdfY >= block.y - block.height - padding && pdfY <= block.y + padding) {
-                return block
-            }
+    private fun addFloatingOverlayView(bitmap: Bitmap, pdfX: Float, pdfY: Float, pdfWidth: Float, pdfHeight: Float, rotationAngle: Float = 0f, isSignature: Boolean = true) {
+        val container = findViewById<FrameLayout>(R.id.pdfViewContainer) ?: return
+        val page = currentPage ?: return
+        
+        val wView = ivPdfPage.width.toFloat()
+        val hView = ivPdfPage.height.toFloat()
+        val wPdf = page.width.toFloat()
+        val hPdf = page.height.toFloat()
+
+        if (wView <= 0 || hView <= 0) return
+
+        // 1. Quy đổi kích thước PDF sang pixel màn hình
+        val viewWidth = pdfWidth * (wView / wPdf)
+        val viewHeight = pdfHeight * (hView / hPdf)
+
+        // 2. Quy đổi toạ độ PDF (trái-dưới) sang toạ độ View (trái-trên)
+        val viewPoint = touchHelper.pdfToView(pdfX, pdfY, wView, hView, wPdf, hPdf)
+        val viewX_left = viewPoint.x
+        val viewY_bottom = viewPoint.y
+        val viewY_top = viewY_bottom - viewHeight
+
+        // 3. Tính toán kích thước của toàn bộ FloatingEditView (bao gồm cả lề vẽ handle)
+        val padding = 40f
+        val rotateLineLength = 30f
+        
+        val totalWidth = viewWidth + 2 * padding
+        val totalHeight = viewHeight + 2 * padding + rotateLineLength
+
+        val lp = FrameLayout.LayoutParams(totalWidth.toInt(), totalHeight.toInt()).apply {
+            leftMargin = (viewX_left - padding).toInt()
+            topMargin = (viewY_top - padding - rotateLineLength).toInt()
         }
-        return null
+
+        val floatingView = FloatingEditView(this, bitmap, isSignature).apply {
+            layoutParams = lp
+            rotation = rotationAngle
+        }
+
+        // Đăng ký callback xoá View
+        floatingView.onDeleteListener = {
+            container.removeView(floatingView)
+        }
+
+        container.addView(floatingView)
     }
 
+    private fun collectOverlayEdits(): List<PdfEdit> {
+        val list = mutableListOf<PdfEdit>()
+        val container = findViewById<FrameLayout>(R.id.pdfViewContainer) ?: return list
+        val page = currentPage ?: return list
+        
+        val wView = ivPdfPage.width.toFloat()
+        val hView = ivPdfPage.height.toFloat()
+        val wPdf = page.width.toFloat()
+        val hPdf = page.height.toFloat()
 
-    // Quét toàn bộ trang PDF để nhận diện văn bản và tọa độ của chúng
-    private fun detectTextBlocks(pageIndex: Int) {
-        detectedTextBlocks.clear()
-        val filePath = pdfFilePath ?: return
-        detectedTextBlocks.addAll(PdfEditorHelper.detectTextBlocks(filePath, pageIndex))
+        if (wView <= 0 || hView <= 0) return list
+
+        val padding = 40f
+        val rotateLineLength = 30f
+
+        for (i in 0 until container.childCount) {
+            val child = container.getChildAt(i)
+            if (child is FloatingEditView) {
+                // 1. Lấy toạ độ thực tế của View (bao gồm cả translationX, translationY từ thao tác kéo thả)
+                val viewX_left = child.x + padding
+                val viewY_top = child.y + padding + rotateLineLength
+                
+                // 2. Lấy kích thước thực tế của View
+                val viewWidth = child.width - 2 * padding
+                val viewHeight = child.height - 2 * padding - rotateLineLength
+
+                // 3. Quy đổi ngược sang toạ độ PDF
+                val pdfWidth = viewWidth * (wPdf / wView)
+                val pdfHeight = viewHeight * (hPdf / hView)
+                
+                val pdfX = viewX_left * (wPdf / wView)
+                val viewY_bottom = viewY_top + viewHeight
+                val pdfY = hPdf - viewY_bottom * (hPdf / hView)
+
+                val rotationVal = child.rotation
+
+                if (child.isSignature) {
+                    list.add(PdfEdit.SignatureEdit(child.bitmap, pdfX, pdfY, pdfWidth, pdfHeight, rotationVal))
+                } else {
+                    list.add(PdfEdit.ImageEdit(child.bitmap, pdfX, pdfY, pdfWidth, pdfHeight, rotationVal))
+                }
+            }
+        }
+        return list
+    }
+
+    private fun clearFloatingOverlayViews() {
+        val container = findViewById<FrameLayout>(R.id.pdfViewContainer) ?: return
+        for (i in container.childCount - 1 downTo 0) {
+            val child = container.getChildAt(i)
+            if (child is FloatingEditView) {
+                container.removeViewAt(i)
+            }
+        }
     }
 
     private fun deactivateAllModes() {
-        isEditTextMode = false
-        isHighlightMode = false
-        isLineEffectMode = false
-        isReplaceImageMode = false
-        isSignatureMode = false
-
+        editManager.deactivateAllModes()
         closeAndSaveInlineEditText()
-        detectedImageRects.clear()
 
         btnMenuTools.text = "Công cụ"
         btnMenuTools.backgroundTintList = android.content.res.ColorStateList.valueOf("#2563EB".toColorInt())

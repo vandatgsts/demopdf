@@ -30,4 +30,8 @@ dependencies {
     
     // Phụ thuộc vào module thư viện cục bộ mylibrary
     implementation(project(":mylibrary"))
+    
+    // Coroutines & Lifecycle cho xử lý bất đồng bộ
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
 }
